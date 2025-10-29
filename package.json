@@ -1,0 +1,56 @@
+{
+  "name": "nids-system",
+  "version": "1.0.0",
+  "description": "Network Intrusion Detection System with ML-based threat detection",
+  "main": "start.sh",
+  "scripts": {
+    "start": "./start.sh",
+    "start:windows": "start.bat",
+    "dev": "./start.sh",
+    "setup": "cd backend && python -m venv venv && source venv/bin/activate && pip install -r requirements.txt && cd ../frontend && npm install",
+    "setup:windows": "cd backend && python -m venv venv && call venv\\Scripts\\activate.bat && pip install -r requirements.txt && cd ../frontend && npm install",
+    "backend": "cd backend && source venv/bin/activate && python run.py",
+    "frontend": "cd frontend && npm start",
+    "test": "cd backend && source venv/bin/activate && python -m pytest && cd ../frontend && npm test",
+    "build": "cd frontend && npm run build",
+    "clean": "rm -rf backend/venv backend/__pycache__ backend/models/* frontend/node_modules frontend/build",
+    "clean:windows": "rmdir /s /q backend\\venv backend\\__pycache__ frontend\\node_modules frontend\\build 2>nul || echo Cleaned"
+  },
+  "keywords": [
+    "network-security",
+    "intrusion-detection",
+    "machine-learning",
+    "cybersecurity",
+    "svm",
+    "xgboost",
+    "crow-search-algorithm",
+    "fastapi",
+    "react"
+  ],
+  "author": "NIDS Development Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/nids-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/nids-system/issues"
+  },
+  "homepage": "https://github.com/your-username/nids-system#readme",
+  "engines": {
+    "node": ">=14.0.0",
+    "python": ">=3.8.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "directories": {
+    "backend": "backend/",
+    "frontend": "frontend/",
+    "docs": "docs/"
+  }
+}
