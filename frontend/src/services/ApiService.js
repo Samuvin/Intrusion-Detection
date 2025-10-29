@@ -4,7 +4,7 @@
 
 import axios from 'axios';
 
-const BASE_URL = process.env.REACT_APP_API_URL || '/api/v1';
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 class ApiService {
   constructor() {
@@ -89,9 +89,18 @@ class ApiService {
     return this.client.post(url, formData, config);
   }
 
-  // Health check
+  // Health check - endpoint is at root level, not under /api/v1
   async checkHealth() {
-    return this.get('/health');
+    try {
+      const response = await fetch('http://localhost:8000/health');
+      if (response.ok) {
+        return await response.json();
+      }
+      throw new Error(`Health check failed: ${response.status}`);
+    } catch (error) {
+      console.debug('Health check error:', error);
+      return { status: 'error', message: error.message };
+    }
   }
 
   // Model Management APIs
@@ -138,32 +147,44 @@ class ApiService {
 
   // Monitoring APIs
   async getMonitoringStatus() {
-    return this.get('/monitoring/status');
+    // Use full URL for monitoring status
+    const response = await fetch('http://localhost:8000/api/v1/monitoring/status');
+    if (response.ok) {
+      return await response.json();
+    }
+    throw new Error(`Monitoring status failed: ${response.status}`);
   }
 
   async simulateAttack(attackType = 'DoS') {
-    return this.post('/monitoring/simulate-attack', {}, {
-      params: { attack_type: attackType }
+    // Use full URL for simulate attack
+    const response = await fetch(`http://localhost:8000/api/v1/monitoring/simulate-attack?attack_type=${encodeURIComponent(attackType)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
+    if (response.ok) {
+      return await response.json();
+    }
+    const errorText = await response.text();
+    throw new Error(`Attack simulation failed: ${response.status} - ${errorText}`);
   }
 
   // WebSocket connection for real-time monitoring
   createWebSocketConnection(onMessage, onError, onClose) {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/api/v1/monitoring/live`;
+    // Use explicit backend URL for WebSocket
+    const wsUrl = 'ws://localhost:8000/api/v1/monitoring/live';
     
     try {
       const ws = new WebSocket(wsUrl);
       
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-      };
-      
+      // Only set basic handlers, let component override for state management
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          onMessage(data);
+          if (onMessage) {
+            onMessage(data);
+          }
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
         }
@@ -174,10 +195,7 @@ class ApiService {
         if (onError) onError(error);
       };
       
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        if (onClose) onClose();
-      };
+      // onopen and onclose will be set by the component for state management
       
       return ws;
     } catch (error) {
@@ -209,88 +227,6 @@ class ApiService {
       params: { format },
       responseType: 'blob'
     });
-  }
-
-  // WebSocket connection for real-time monitoring
-  createWebSocketConnection(onMessage, onError, onClose) {
-    try {
-      const ws = new WebSocket('ws://localhost:8000/ws/monitoring');
-      
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          onMessage(data);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        if (onError) onError(error);
-      };
-      
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        if (onClose) onClose();
-      };
-      
-      return ws;
-    } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
-      if (onError) onError(error);
-      return null;
-    }
-  }
-
-  // Simulate attack for testing
-  async simulateAttack(attackType) {
-    return this.request('/api/v1/monitoring/simulate-attack', {
-      method: 'POST',
-      body: JSON.stringify({ attack_type: attackType })
-    });
-  }
-
-  // Load pre-trained model
-  async loadModel() {
-    return this.request('/api/v1/models/load', {
-      method: 'POST'
-    });
-  }
-
-  // Upload dataset
-  async uploadDataset(file, name) {
-    const formData = new FormData();
-    formData.append('dataset', file);
-    formData.append('name', name);
-    
-    return this.request('/api/v1/datasets/upload', {
-      method: 'POST',
-      body: formData,
-      // Don't set Content-Type header, let the browser set it with boundary
-      headers: {}
-    });
-  }
-
-  // Delete dataset
-  async deleteDataset(name) {
-    return this.request(`/api/v1/datasets/${encodeURIComponent(name)}`, {
-      method: 'DELETE'
-    });
-  }
-
-  // Get dataset info
-  async getDatasetInfo(name) {
-    return this.request(`/api/v1/datasets/${encodeURIComponent(name)}/info`);
-  }
-
-  // Get system health
-  async getSystemHealth() {
-    return this.request('/api/v1/monitoring/health');
   }
 }
 

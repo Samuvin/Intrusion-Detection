@@ -2,7 +2,7 @@
  * Real-time Monitoring component for live network traffic analysis.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Grid,
   Card,
@@ -34,6 +34,7 @@ import { ApiService } from '../services/ApiService';
 const RealTimeMonitoring = ({ onShowNotification }) => {
   const [monitoringStatus, setMonitoringStatus] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [liveData, setLiveData] = useState({
     totalConnections: 0,
     suspiciousActivities: 0,
@@ -54,6 +55,7 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
   });
   const [recentAlerts, setRecentAlerts] = useState([]);
   const [websocket, setWebsocket] = useState(null);
+  const wsRef = useRef(null);
 
   useEffect(() => {
     loadMonitoringStatus();
@@ -64,8 +66,20 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
     }, 10000);
     
     return () => {
+      if (wsRef.current) {
+        try {
+          wsRef.current.close(1000, 'Component unmounting');
+        } catch (e) {
+          // Ignore errors
+        }
+        wsRef.current = null;
+      }
       if (websocket) {
-        websocket.close();
+        try {
+          websocket.close(1000, 'Component unmounting');
+        } catch (e) {
+          // Ignore errors
+        }
       }
       clearInterval(interval);
     };
@@ -73,10 +87,12 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
   
   useEffect(() => {
     // Auto-connect WebSocket after initial load
-    if (!isConnected) {
+    const connectTimer = setTimeout(() => {
       connectWebSocket();
-    }
-  }, []);
+    }, 1000); // Small delay to ensure component is fully mounted
+    
+    return () => clearTimeout(connectTimer);
+  }, []); // Only run on mount
 
   const loadMonitoringStatus = async () => {
     try {
@@ -91,26 +107,61 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
             const logStats = await logStatsResponse.json();
             const stats = logStats.statistics || {};
             
-            // Update live data with REAL values from log statistics
-            setLiveData(prev => ({
-              ...prev,
-              totalConnections: response.monitoring_status.statistics?.total_connections_today || stats.total_entries || 0,
-              suspiciousActivities: stats.error_rate > 0 ? Math.floor(stats.total_entries * stats.error_rate) : 0,
-              blockedAttacks: response.monitoring_status.statistics?.attacks_blocked_today || 0,
-              networkMetrics: {
-                bandwidthUsage: Math.min(stats.entries_per_second * 5, 100) || 0, // Estimate based on entries/sec
-                packetLoss: (stats.error_rate * 100) || 0,
-                latency: stats.entries_per_second > 0 ? Math.max(10, 1000 / stats.entries_per_second) : 0
-              }
-            }));
+            // If there are no logs, reset all values to zero
+            const totalEntries = stats.total_entries || 0;
+            const entriesPerSec = stats.entries_per_second || 0;
+            const errorRate = stats.error_rate || 0;
+            
+            if (totalEntries === 0) {
+              // No logs - reset everything to zero
+              setLiveData(prev => ({
+                ...prev,
+                totalConnections: 0,
+                suspiciousActivities: 0,
+                blockedAttacks: 0,
+                currentThreatLevel: 'Low',
+                networkMetrics: {
+                  bandwidthUsage: 0,
+                  packetLoss: 0,
+                  latency: 0
+                },
+                attackBreakdown: {
+                  Normal: 0,
+                  DoS: 0,
+                  Probe: 0,
+                  U2R: 0,
+                  R2L: 0
+                }
+              }));
+            } else {
+              // Update live data with REAL values from log statistics
+              setLiveData(prev => ({
+                ...prev,
+                totalConnections: response.monitoring_status.statistics?.total_connections_today || totalEntries || 0,
+                suspiciousActivities: errorRate > 0 ? Math.floor(totalEntries * errorRate) : 0,
+                blockedAttacks: response.monitoring_status.statistics?.attacks_blocked_today || 0,
+                networkMetrics: {
+                  bandwidthUsage: entriesPerSec > 0 ? Math.min(entriesPerSec * 5, 100) : 0,
+                  packetLoss: errorRate > 0 ? (errorRate * 100) : 0,
+                  latency: entriesPerSec > 0 ? Math.max(10, 1000 / entriesPerSec) : 0
+                }
+              }));
+            }
           }
         } catch (error) {
           console.error('Failed to fetch log statistics:', error);
-          // Fallback to monitoring status only
+          // Fallback to monitoring status only - check if we have real data
+          const totalConnections = response.monitoring_status.statistics?.total_connections_today || 0;
           setLiveData(prev => ({
             ...prev,
-            totalConnections: response.monitoring_status.statistics?.total_connections_today || 0,
+            totalConnections: totalConnections,
             blockedAttacks: response.monitoring_status.statistics?.attacks_blocked_today || 0,
+            // If no connections, reset network metrics
+            networkMetrics: totalConnections === 0 ? {
+              bandwidthUsage: 0,
+              packetLoss: 0,
+              latency: 0
+            } : prev.networkMetrics
           }));
         }
       }
@@ -121,87 +172,157 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
   };
 
   const connectWebSocket = () => {
-    try {
-      const ws = ApiService.createWebSocketConnection(
-        (data) => {
-          // Handle incoming WebSocket data
-          if (data.type === 'traffic_update') {
-            setLiveData(prev => ({
-              ...prev,
-              totalConnections: data.data.total_connections || prev.totalConnections,
-              suspiciousActivities: data.data.suspicious_activities || prev.suspiciousActivities,
-              blockedAttacks: data.data.blocked_attacks || prev.blockedAttacks,
-              currentThreatLevel: data.data.current_threat_level || prev.currentThreatLevel,
-              networkMetrics: data.data.network_metrics || prev.networkMetrics,
-              attackBreakdown: data.data.attack_breakdown || prev.attackBreakdown
-            }));
-          } else if (data.type === 'attack_detected') {
-            // Add new alert
-            const newAlert = {
-              id: Date.now(),
-              type: data.data.attack_type,
-              message: `${data.data.attack_type} attack detected from ${data.data.source_ip}`,
-              severity: data.data.severity.toLowerCase(),
-              timestamp: new Date(data.timestamp),
-              confidence: data.data.confidence
-            };
-            
-            setRecentAlerts(prev => [newAlert, ...prev.slice(0, 9)]); // Keep last 10 alerts
-            onShowNotification(`Security Alert: ${newAlert.message}`, 'warning');
-          }
-        },
-        (error) => {
-          console.error('WebSocket error:', error);
-          setIsConnected(false);
-          onShowNotification('Real-time connection lost', 'error');
-        },
-        () => {
-          setIsConnected(false);
-          onShowNotification('Real-time monitoring disconnected', 'info');
+    // Don't create duplicate connections
+    if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        return; // Already connected
+      } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+        return; // Already connecting
+      } else {
+        // Close existing connection before creating a new one
+        try {
+          wsRef.current.close();
+        } catch (e) {
+          // Ignore errors
         }
-      );
-
-      if (ws) {
-        setWebsocket(ws);
+      }
+    }
+    
+    setIsConnecting(true);
+    
+    try {
+      // Create WebSocket directly with explicit URL
+      const wsUrl = 'ws://localhost:8000/api/v1/monitoring/live';
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected to:', wsUrl);
         setIsConnected(true);
+        setIsConnecting(false);
+        setWebsocket(ws);
         onShowNotification('Real-time monitoring connected', 'success');
         
         // Send ping every 30 seconds to keep connection alive
         const pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
+            try {
+              ws.send(JSON.stringify({ type: 'ping' }));
+            } catch (e) {
+              console.error('Failed to send ping:', e);
+              clearInterval(pingInterval);
+            }
+          } else {
+            clearInterval(pingInterval);
           }
         }, 30000);
-
-        ws.onclose = () => {
-          clearInterval(pingInterval);
-          setIsConnected(false);
-        };
-      }
+        
+        // Store ping interval for cleanup
+        ws._pingInterval = pingInterval;
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Handle incoming WebSocket data
+          if (data.type === 'traffic_update') {
+            setLiveData(prev => ({
+              ...prev,
+              totalConnections: data.data?.total_connections || prev.totalConnections,
+              suspiciousActivities: data.data?.suspicious_activities || prev.suspiciousActivities,
+              blockedAttacks: data.data?.blocked_attacks || prev.blockedAttacks,
+              currentThreatLevel: data.data?.current_threat_level || prev.currentThreatLevel,
+              networkMetrics: data.data?.network_metrics || prev.networkMetrics,
+              attackBreakdown: data.data?.attack_breakdown || prev.attackBreakdown
+            }));
+          } else if (data.type === 'attack_detected') {
+            // Add new alert
+            const newAlert = {
+              id: Date.now(),
+              type: data.data?.attack_type || 'Unknown',
+              message: `${data.data?.attack_type || 'Unknown'} attack detected from ${data.data?.source_ip || 'unknown'}`,
+              severity: (data.data?.severity || 'medium').toLowerCase(),
+              timestamp: new Date(data.timestamp || Date.now()),
+              confidence: data.data?.confidence || 0.5
+            };
+            
+            setRecentAlerts(prev => [newAlert, ...prev.slice(0, 9)]); // Keep last 10 alerts
+            onShowNotification(`Security Alert: ${newAlert.message}`, 'warning');
+          } else if (data.type === 'pong') {
+            // Handle pong response to ping
+            console.log('Received pong from server');
+          }
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setIsConnected(false);
+        setIsConnecting(false);
+      };
+      
+      ws.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
+        
+        // Clear ping interval
+        if (ws._pingInterval) {
+          clearInterval(ws._pingInterval);
+        }
+        
+        setIsConnected(false);
+        setIsConnecting(false);
+        wsRef.current = null;
+        setWebsocket(null);
+        
+        // Only attempt to reconnect if it wasn't a manual close (code 1000)
+        if (event.code !== 1000) {
+          console.log('Attempting to reconnect in 3 seconds...');
+          setTimeout(() => {
+            if (!wsRef.current) {
+              connectWebSocket();
+            }
+          }, 3000);
+        }
+      };
+      
     } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-      onShowNotification('Failed to connect to real-time monitoring', 'error');
+      console.error('Failed to create WebSocket connection:', error);
+      setIsConnected(false);
+      setIsConnecting(false);
+      wsRef.current = null;
+      // Retry connection after 5 seconds
+      setTimeout(() => {
+        if (!wsRef.current) {
+          connectWebSocket();
+        }
+      }, 5000);
     }
   };
 
-  const disconnectWebSocket = () => {
-    if (websocket) {
-      websocket.close();
-      setWebsocket(null);
-      setIsConnected(false);
-      onShowNotification('Real-time monitoring disconnected', 'info');
-    }
-  };
 
   const simulateAttack = async (attackType) => {
     try {
+      onShowNotification(`Triggering ${attackType} attack simulation...`, 'info');
       const response = await ApiService.simulateAttack(attackType);
-      if (response.status === 'success') {
-        onShowNotification(`${attackType} attack simulation triggered`, 'info');
+      if (response && response.status === 'success') {
+        const simulationData = response.simulation_data || {};
+        const message = response.message || `${attackType} attack simulation completed`;
+        onShowNotification(`${message} (${simulationData.packets || 0} packets, ${simulationData.duration || 0}s)`, 'success');
+        
+        // Force refresh of monitoring data after attack simulation
+        setTimeout(() => {
+          loadMonitoringStatus();
+        }, 1000);
+      } else {
+        onShowNotification('Attack simulation completed but received unexpected response', 'warning');
       }
     } catch (error) {
       console.error('Attack simulation failed:', error);
-      onShowNotification('Attack simulation failed', 'error');
+      const errorMessage = error.message || 'Failed to simulate attack';
+      onShowNotification(`Attack simulation failed: ${errorMessage}`, 'error');
     }
   };
 
@@ -233,28 +354,11 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <Chip
             icon={isConnected ? <CheckCircleIcon /> : <ErrorIcon />}
-            label={isConnected ? 'Connected' : 'Disconnected'}
-            color={isConnected ? 'success' : 'error'}
+            label={isConnected ? 'Live' : 'Connecting...'}
+            color={isConnected ? 'success' : 'warning'}
             variant="outlined"
+            size="small"
           />
-          
-          {!isConnected ? (
-            <Button 
-              variant="contained" 
-              onClick={connectWebSocket}
-              startIcon={<NetworkIcon />}
-            >
-              Connect Live Monitoring
-            </Button>
-          ) : (
-            <Button 
-              variant="outlined" 
-              onClick={disconnectWebSocket}
-              color="error"
-            >
-              Disconnect
-            </Button>
-          )}
         </Box>
       </Box>
 
@@ -263,7 +367,7 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
             title="Live Connections"
-            value={liveData.totalConnections.toLocaleString()}
+            value={(liveData.totalConnections || 0).toLocaleString()}
             icon={<NetworkIcon />}
             color="primary"
             subtitle="Active network connections"
@@ -293,7 +397,7 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
         <Grid item xs={12} sm={6} md={3}>
           <MetricCard
             title="System Load"
-            value={`${liveData.networkMetrics.bandwidthUsage.toFixed(1)}%`}
+            value={`${(liveData.networkMetrics?.bandwidthUsage || 0).toFixed(1)}%`}
             icon={<SpeedIcon />}
             color="info"
             subtitle="Network bandwidth usage"
@@ -329,14 +433,14 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
                 </Typography>
                 <LinearProgress 
                   variant="determinate" 
-                  value={liveData.networkMetrics.bandwidthUsage} 
+                  value={liveData.networkMetrics?.bandwidthUsage || 0} 
                   sx={{ height: 8, borderRadius: 4 }}
                 />
               </Box>
 
               <Typography variant="body2" color="text.secondary">
-                Packet Loss: {liveData.networkMetrics.packetLoss.toFixed(2)}% | 
-                Latency: {liveData.networkMetrics.latency.toFixed(1)}ms
+                Packet Loss: {(liveData.networkMetrics?.packetLoss || 0).toFixed(2)}% | 
+                Latency: {(liveData.networkMetrics?.latency || 0).toFixed(1)}ms
               </Typography>
             </CardContent>
           </Card>
@@ -397,11 +501,11 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
                         secondary={
                           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mt: 0.5 }}>
                             <Typography variant="caption">
-                              {alert.timestamp.toLocaleString()}
+                              {alert.timestamp ? new Date(alert.timestamp).toLocaleString() : 'Unknown'}
                             </Typography>
                             {alert.confidence && (
                               <Chip
-                                label={`${(alert.confidence * 100).toFixed(1)}% confidence`}
+                                label={`${((alert.confidence || 0) * 100).toFixed(1)}% confidence`}
                                 size="small"
                                 variant="outlined"
                               />
@@ -446,9 +550,15 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
         </Grid>
       </Grid>
 
-      {!isConnected && (
+      {!isConnected && !isConnecting && (
         <Alert severity="info" sx={{ mt: 3 }}>
-          <strong>Live monitoring is disconnected.</strong> Click "Connect Live Monitoring" to start receiving real-time updates.
+          <strong>Not connected.</strong> Attempting to connect automatically...
+        </Alert>
+      )}
+      
+      {isConnecting && (
+        <Alert severity="warning" sx={{ mt: 3 }}>
+          <strong>Connecting to real-time monitoring...</strong> Data will appear automatically once connected.
         </Alert>
       )}
     </Box>

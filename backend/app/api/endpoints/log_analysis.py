@@ -137,6 +137,73 @@ async def submit_logs(request: LogSubmissionRequest) -> Dict[str, Any]:
                             'redirect_count': entry_dict.get('redirect_count', 0) or 0,
                             'is_secure': entry_dict.get('is_secure', False),
                             'request_id': entry_dict.get('request_id'),
+                            # SSL/TLS Security
+                            'tls_version': entry_dict.get('tls_version'),
+                            'cipher_suite': entry_dict.get('cipher_suite'),
+                            'cert_subject': entry_dict.get('cert_subject'),
+                            'cert_issuer': entry_dict.get('cert_issuer'),
+                            'cert_valid': entry_dict.get('cert_valid'),
+                            'cert_valid_from': entry_dict.get('cert_valid_from'),
+                            'cert_valid_to': entry_dict.get('cert_valid_to'),
+                            # Geographic data
+                            'source_country': entry_dict.get('source_country'),
+                            'source_asn': entry_dict.get('source_asn'),
+                            'source_isp': entry_dict.get('source_isp'),
+                            'destination_country': entry_dict.get('destination_country'),
+                            'destination_asn': entry_dict.get('destination_asn'),
+                            'destination_isp': entry_dict.get('destination_isp'),
+                            # DNS details
+                            'dns_server': entry_dict.get('dns_server'),
+                            'dns_record_type': entry_dict.get('dns_record_type'),
+                            'dns_ttl': entry_dict.get('dns_ttl'),
+                            'resolved_ips': entry_dict.get('resolved_ips'),
+                            # Connection state
+                            'connection_state': entry_dict.get('connection_state'),
+                            'packet_count_sent': entry_dict.get('packet_count_sent'),
+                            'packet_count_received': entry_dict.get('packet_count_received'),
+                            'avg_packet_size_sent': entry_dict.get('avg_packet_size_sent'),
+                            'avg_packet_size_received': entry_dict.get('avg_packet_size_received'),
+                            'ttl': entry_dict.get('ttl'),
+                            'mss': entry_dict.get('mss'),
+                            'fragmentation': entry_dict.get('fragmentation'),
+                            # Security headers
+                            'content_security_policy': entry_dict.get('content_security_policy'),
+                            'strict_transport_security': entry_dict.get('strict_transport_security'),
+                            'x_frame_options': entry_dict.get('x_frame_options'),
+                            'x_content_type_options': entry_dict.get('x_content_type_options'),
+                            'x_xss_protection': entry_dict.get('x_xss_protection'),
+                            'referrer_policy': entry_dict.get('referrer_policy'),
+                            # Authentication
+                            'auth_method': entry_dict.get('auth_method'),
+                            'auth_token_type': entry_dict.get('auth_token_type'),
+                            'session_id': entry_dict.get('session_id'),
+                            # IP reputation
+                            'ip_reputation_score': entry_dict.get('ip_reputation_score'),
+                            'is_malicious_ip': entry_dict.get('is_malicious_ip'),
+                            'threat_types': entry_dict.get('threat_types'),
+                            'threat_confidence': entry_dict.get('threat_confidence'),
+                            'geo_risk_score': entry_dict.get('geo_risk_score'),
+                            # Performance
+                            'compression_algorithm': entry_dict.get('compression_algorithm'),
+                            'compression_ratio': entry_dict.get('compression_ratio'),
+                            'bandwidth_usage': entry_dict.get('bandwidth_usage'),
+                            'latency_jitter': entry_dict.get('latency_jitter'),
+                            # Device fingerprinting
+                            'os_name': entry_dict.get('os_name'),
+                            'os_version': entry_dict.get('os_version'),
+                            'browser_name': entry_dict.get('browser_name'),
+                            'browser_version': entry_dict.get('browser_version'),
+                            'device_type': entry_dict.get('device_type'),
+                            # Connection reuse
+                            'connection_reused': entry_dict.get('connection_reused'),
+                            'connection_id': entry_dict.get('connection_id'),
+                            'keep_alive_duration': entry_dict.get('keep_alive_duration'),
+                            # Error and rate limiting
+                            'error_message': entry_dict.get('error_message'),
+                            'error_type': entry_dict.get('error_type'),
+                            'retry_count': entry_dict.get('retry_count'),
+                            'rate_limit_remaining': entry_dict.get('rate_limit_remaining'),
+                            'rate_limit_limit': entry_dict.get('rate_limit_limit'),
                         })
                 
                 # Prepare log analysis data for dashboard
@@ -273,16 +340,76 @@ async def get_log_statistics() -> Dict[str, Any]:
     """
     try:
         stats = log_aggregator.get_statistics()
+        return {
+            'status': 'success',
+            'statistics': stats
+        }
+    except Exception as e:
+        logger.error(f"Failed to get log statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/logs/statistics/by-source")
+async def get_log_statistics_by_source() -> Dict[str, Any]:
+    """
+    Get log processing statistics grouped by source/server.
+    
+    Returns:
+        Statistics for each log source including:
+        - total_entries
+        - error_count and error_rate
+        - unique_ips
+        - bytes sent/received
+        - time range
+        - protocols, methods
+        - attack types detected
+    """
+    try:
+        source_stats = log_aggregator.get_statistics_by_source()
         
         return {
             'status': 'success',
-            'statistics': stats,
+            'sources': source_stats,
+            'total_sources': len(source_stats),
             'timestamp': datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Failed to get log statistics: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Statistics retrieval failed: {str(e)}")
+        logger.error(f"Failed to get statistics by source: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/logs/statistics/by-destination")
+async def get_log_statistics_by_destination() -> Dict[str, Any]:
+    """
+    Get log processing statistics grouped by destination server/hostname.
+    Shows data about actual servers/services (CloudFront, Cloudflare, APIs, etc.).
+    
+    Returns:
+        Statistics for each destination including:
+        - destination name (hostname with server info)
+        - hostname, server, destination IP/port
+        - total_entries, error_count, error_rate
+        - unique source IPs
+        - bytes sent/received
+        - protocols, methods, paths
+        - average response times (DNS, TCP, SSL, total)
+        - attack types detected
+        - time range
+    """
+    try:
+        destination_stats = log_aggregator.get_statistics_by_destination()
+        
+        return {
+            'status': 'success',
+            'destinations': destination_stats,
+            'total_destinations': len(destination_stats),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get statistics by destination: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/logs/all")

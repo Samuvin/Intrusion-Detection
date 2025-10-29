@@ -6,6 +6,7 @@ import logging
 import pickle
 import os
 from typing import Dict, List, Optional, Tuple, Any
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -36,6 +37,10 @@ class ModelManager:
         self.label_encoder = LabelEncoder()
         self.feature_names = []
         self.is_trained = False
+        self.dataset_name = None  # Track which dataset was used for training
+        self.last_training = None  # Track when model was last trained
+        self.current_model_name = None  # Track which model file is currently loaded
+        self.current_model_path = None  # Track the full path of the loaded model
         
         # Create model directory
         os.makedirs(settings.MODEL_PATH, exist_ok=True)
@@ -75,7 +80,8 @@ class ModelManager:
         self,
         data: pd.DataFrame,
         target_column: str = 'class',
-        optimize_hyperparameters: bool = True
+        optimize_hyperparameters: bool = True,
+        dataset_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Train the hybrid NIDS model.
@@ -150,16 +156,24 @@ class ModelManager:
             }
             
             self.is_trained = True
+            self.dataset_name = dataset_name  # Store dataset name
+            self.last_training = datetime.now()  # Store training timestamp
             logger.info(f"Model training completed. Accuracy: {metrics['accuracy']:.4f}")
             
             # Save model
             await self._save_model()
             
+            # Update current model tracking after saving
+            model_path = os.path.join(settings.MODEL_PATH, 'nids_model.pkl')
+            self.current_model_path = model_path
+            self.current_model_name = 'nids_model'  # Default model name
+            
             return {
                 'status': 'success',
                 'metrics': metrics,
                 'training_samples': len(X_train),
-                'test_samples': len(X_test)
+                'test_samples': len(X_test),
+                'dataset_name': dataset_name
             }
             
         except Exception as e:
@@ -222,7 +236,11 @@ class ModelManager:
                 if self.feature_selector else []
             ),
             'model_type': 'Hybrid SVM + XGBoost',
-            'optimization': 'Crow Search Algorithm'
+            'optimization': 'Crow Search Algorithm',
+            'dataset_name': self.dataset_name,  # Dataset used for training
+            'last_training': self.last_training.isoformat() if self.last_training else None,
+            'current_model_name': self.current_model_name,  # Currently loaded model name
+            'current_model_path': self.current_model_path  # Currently loaded model path
         }
     
     def _prepare_data(self, data: pd.DataFrame, target_column: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -290,7 +308,9 @@ class ModelManager:
                 'feature_selector': self.feature_selector,
                 'scaler': self.scaler,
                 'label_encoder': self.label_encoder,
-                'feature_names': self.feature_names
+                'feature_names': self.feature_names,
+                'dataset_name': self.dataset_name,  # Save dataset name
+                'last_training': self.last_training.isoformat() if self.last_training else None  # Save training timestamp
             }
             
             model_path = os.path.join(settings.MODEL_PATH, 'nids_model.pkl')
@@ -321,6 +341,24 @@ class ModelManager:
             self.label_encoder = model_data['label_encoder']
             self.feature_names = model_data['feature_names']
             self.is_trained = True
+            # Load dataset info if available (for backward compatibility)
+            self.dataset_name = model_data.get('dataset_name')
+            if model_data.get('last_training'):
+                try:
+                    self.last_training = datetime.fromisoformat(model_data['last_training'])
+                except (ValueError, TypeError):
+                    self.last_training = None
+            else:
+                self.last_training = None
+            
+            # Track the current model file
+            self.current_model_path = model_path
+            # Extract model name from path (e.g., "nids_model.pkl" -> "nids_model")
+            if model_path:
+                model_filename = os.path.basename(model_path)
+                self.current_model_name = os.path.splitext(model_filename)[0]  # Remove .pkl extension
+            else:
+                self.current_model_name = None
             
             logger.info(f"Model loaded from {model_path}")
             return True

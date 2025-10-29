@@ -2,8 +2,8 @@
  * Main App component for NIDS Dashboard.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import {
   AppBar,
   Toolbar,
@@ -24,13 +24,11 @@ import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
   Security as SecurityIcon,
-  Analytics as AnalyticsIcon,
   Storage as StorageIcon,
   CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 
 import Dashboard from './components/Dashboard';
-import ModelManagement from './components/ModelManagement';
 import DatasetManagement from './components/DatasetManagement';
 import RealTimeMonitoring from './components/RealTimeMonitoring';
 import LogAnalysisDashboard from './components/LogAnalysisDashboard';
@@ -38,15 +36,24 @@ import { ApiService } from './services/ApiService';
 
 const drawerWidth = 240;
 
+// Context to share navigation blocking state
+const NavigationContext = createContext({
+  isNavigationBlocked: false,
+  setNavigationBlocked: () => {}
+});
+
+export const useNavigationBlock = () => useContext(NavigationContext);
+
 const menuItems = [
   { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { title: 'Real-time Monitoring', icon: <SecurityIcon />, path: '/monitoring' },
   { title: 'Log Analysis', icon: <UploadIcon />, path: '/log-analysis' },
-  { title: 'Model Management', icon: <AnalyticsIcon />, path: '/models' },
-  { title: 'Dataset Management', icon: <StorageIcon />, path: '/datasets' },
+  { title: 'Datasets & Models', icon: <StorageIcon />, path: '/datasets' },
 ];
 
 function App() {
+  const location = useLocation();
+  const [isNavigationBlocked, setNavigationBlocked] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState('healthy');
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'info' });
@@ -63,14 +70,23 @@ function App() {
 
   const checkSystemHealth = async () => {
     try {
-      const response = await ApiService.get('/health');
-      if (response.status === 'healthy') {
-        setSystemStatus('healthy');
+      // Health endpoint is at root level, not under /api/v1
+      const response = await fetch('http://localhost:8000/health');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'healthy') {
+          setSystemStatus('healthy');
+        } else {
+          setSystemStatus('warning');
+        }
+      } else {
+        setSystemStatus('error');
       }
     } catch (error) {
-      console.error('Health check failed:', error);
+      // Silently handle health check failures - don't spam user with notifications
+      console.debug('Health check failed:', error);
       setSystemStatus('error');
-      showNotification('System health check failed', 'error');
+      // Don't show notification for health check failures to avoid annoying users
     }
   };
 
@@ -96,7 +112,16 @@ function App() {
       <List>
         {menuItems.map((item) => (
           <ListItem key={item.title} disablePadding>
-            <ListItemButton component="a" href={item.path}>
+            <ListItemButton 
+              component={Link} 
+              to={item.path}
+              disabled={isNavigationBlocked && location.pathname !== item.path}
+              onClick={(e) => {
+                if (isNavigationBlocked && location.pathname !== item.path) {
+                  e.preventDefault();
+                }
+              }}
+            >
               <ListItemIcon sx={{ color: 'primary.main' }}>
                 {item.icon}
               </ListItemIcon>
@@ -206,32 +231,34 @@ function App() {
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           mt: 8,
+          height: 'calc(100vh - 64px)',
+          overflow: 'auto',
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
-        <Container maxWidth="xl">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route 
-              path="/dashboard" 
-              element={<Dashboard onShowNotification={showNotification} />} 
-            />
-            <Route 
-              path="/monitoring" 
-              element={<RealTimeMonitoring onShowNotification={showNotification} />} 
-            />
-            <Route 
-              path="/log-analysis" 
-              element={<LogAnalysisDashboard onShowNotification={showNotification} />} 
-            />
-            <Route 
-              path="/models" 
-              element={<ModelManagement onShowNotification={showNotification} />} 
-            />
-            <Route 
-              path="/datasets" 
-              element={<DatasetManagement onShowNotification={showNotification} />} 
-            />
-          </Routes>
+        <Container maxWidth="xl" sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <NavigationContext.Provider value={{ isNavigationBlocked, setNavigationBlocked }}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route 
+                path="/dashboard" 
+                element={<Dashboard onShowNotification={showNotification} />} 
+              />
+              <Route 
+                path="/monitoring" 
+                element={<RealTimeMonitoring onShowNotification={showNotification} />} 
+              />
+              <Route 
+                path="/log-analysis" 
+                element={<LogAnalysisDashboard onShowNotification={showNotification} />} 
+              />
+              <Route 
+                path="/datasets" 
+                element={<DatasetManagement onShowNotification={showNotification} />} 
+              />
+            </Routes>
+          </NavigationContext.Provider>
         </Container>
       </Box>
 

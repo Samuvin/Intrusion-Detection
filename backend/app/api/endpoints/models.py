@@ -16,6 +16,92 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+@router.post("/train-from-dataset")
+async def train_model_from_dataset(
+    dataset_name: str = Form(...),
+    target_column: str = Form("class"),
+    optimize_hyperparameters: bool = Form(True),
+    model_manager: ModelManager = Depends(get_model_manager)
+) -> Dict[str, Any]:
+    """
+    Train the hybrid NIDS model using a dataset by name.
+    
+    Args:
+        dataset_name: Name of the dataset in the datasets folder
+        target_column: Name of the target column (default: 'class')
+        optimize_hyperparameters: Whether to run CSA optimization
+        model_manager: Model manager instance
+        
+    Returns:
+        Training results and performance metrics
+    """
+    from app.core.config import settings
+    import os
+    
+    try:
+        # Find the dataset file
+        dataset_name_normalized = dataset_name.lower().replace('-', '_')
+        dataset_files = os.listdir(settings.DATASET_PATH) if os.path.exists(settings.DATASET_PATH) else []
+        
+        dataset_file = None
+        for f in dataset_files:
+            if dataset_name_normalized in f.lower() and f.endswith('.csv'):
+                dataset_file = f
+                break
+        
+        if not dataset_file:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Dataset '{dataset_name}' not found. Please upload it first."
+            )
+        
+        file_path = os.path.join(settings.DATASET_PATH, dataset_file)
+        
+        # Read dataset
+        df = pd.read_csv(file_path)
+        
+        logger.info(f"Training model with dataset: {dataset_file}, shape: {df.shape}")
+        
+        # Validate dataset
+        if target_column not in df.columns:
+            # Try common target column names
+            common_targets = ['class', 'label', 'target', 'attack_type', 'type']
+            found_target = None
+            for col in common_targets:
+                if col in df.columns:
+                    found_target = col
+                    break
+            
+            if found_target:
+                target_column = found_target
+                logger.info(f"Using target column '{target_column}' instead")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Target column '{target_column}' not found. Available columns: {', '.join(df.columns[:10])}"
+                )
+        
+        # Train model
+        results = await model_manager.train_model(
+            data=df,
+            target_column=target_column,
+            optimize_hyperparameters=optimize_hyperparameters,
+            dataset_name=dataset_name  # Pass dataset name to track it
+        )
+        
+        if results['status'] == 'error':
+            raise HTTPException(status_code=500, detail=results['message'])
+        
+        logger.info(f"Model training completed: {results.get('status')}")
+        return results
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Training failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/train")
 async def train_model(
     dataset: UploadFile = File(...),

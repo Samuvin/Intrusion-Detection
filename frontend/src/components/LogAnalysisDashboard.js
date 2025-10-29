@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import CloseIcon from '@mui/icons-material/Close';
 import {
   Grid,
   Card,
@@ -22,6 +23,12 @@ import {
   Tab,
   LinearProgress,
   Button,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
 } from '@mui/material';
 import {
   Assessment as AssessmentIcon,
@@ -37,7 +44,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   Legend,
   ResponsiveContainer,
 } from 'recharts';
@@ -66,6 +73,9 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
     total: 0,
     hasMore: false
   });
+  const [selectedEntry, setSelectedEntry] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -81,9 +91,10 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
     setLoading(true);
     try {
       // Fetch initial statistics
-      const statsResponse = await fetch('http://localhost:8000/api/v1/log-analysis/statistics');
+      const statsResponse = await fetch('http://localhost:8000/api/v1/log-analysis/logs/statistics');
       if (statsResponse.ok) {
-        const stats = await statsResponse.json();
+        const statsData = await statsResponse.json();
+        const stats = statsData.statistics || statsData;
         setLogData({
           total_entries: stats.total_entries || 0,
           entries_per_second: stats.entries_per_second || 0,
@@ -93,7 +104,7 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
       }
       
       // Load all logs
-      loadAllLogs(0, 100);
+      await loadAllLogs(0, 100);
     } catch (error) {
       console.error('Failed to fetch initial statistics:', error);
     } finally {
@@ -111,17 +122,24 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
       if (response.ok) {
         const data = await response.json();
         if (data.status === 'success') {
-          setAllLogs(prev => offset === 0 ? data.logs : [...prev, ...data.logs]);
+          setAllLogs(prev => offset === 0 ? (data.logs || []) : [...prev, ...(data.logs || [])]);
           setLogsPagination({
             limit: data.limit || limit,
             offset: data.offset || offset,
             total: data.total_count || 0,
             hasMore: data.has_more || false
           });
+        } else {
+          // If status is not success, still reset loading
+          console.warn('Log loading returned non-success status:', data);
         }
+      } else {
+        // If response is not ok, still reset loading
+        console.error('Failed to load logs: HTTP', response.status);
       }
     } catch (error) {
       console.error('Failed to load all logs:', error);
+      // Ensure loading is reset even on error
     } finally {
       setLogsLoading(false);
     }
@@ -134,6 +152,21 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
   };
 
   const setupWebSocketConnection = () => {
+    // Don't create a new connection if one already exists
+    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+      return;
+    }
+    
+    // Close existing connection if it exists but is not open
+    if (wsConnection) {
+      try {
+        wsConnection.close();
+      } catch (e) {
+        // Ignore errors when closing
+      }
+      setWsConnection(null);
+    }
+    
     try {
       const ws = new WebSocket(`ws://localhost:8000/api/v1/monitoring/live`);
       
@@ -144,15 +177,24 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
       };
       
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleRealTimeUpdate(data);
+        try {
+          const data = JSON.parse(event.data);
+          handleRealTimeUpdate(data);
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
       };
       
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
+      ws.onclose = (event) => {
+        console.log('WebSocket disconnected', event.code, event.reason);
         setWsConnection(null);
-        // Attempt to reconnect after 5 seconds
-        setTimeout(setupWebSocketConnection, 5000);
+        // Only reconnect if it was an unexpected close (not manual)
+        if (event.code !== 1000) {
+          // Attempt to reconnect after 3 seconds
+          setTimeout(() => {
+            setupWebSocketConnection();
+          }, 3000);
+        }
       };
       
       ws.onerror = (error) => {
@@ -161,6 +203,10 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
       
     } catch (error) {
       console.error('WebSocket connection failed:', error);
+      // Retry connection after 5 seconds
+      setTimeout(() => {
+        setupWebSocketConnection();
+      }, 5000);
     }
   };
 
@@ -333,7 +379,7 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
                         }}
                       />
                       <YAxis />
-                      <Tooltip />
+                      <RechartsTooltip />
                       <Legend />
                       <Line 
                         type="monotone" 
@@ -364,7 +410,7 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="timestamp" />
                       <YAxis />
-                      <Tooltip />
+                      <RechartsTooltip />
                       <Legend />
                       <Bar dataKey="score" fill="#ff7300" />
                     </BarChart>
@@ -379,161 +425,9 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
           {/* Network Traffic Tab */}
           {activeTab === 1 && (
             <Box>
-              <Typography variant="h6" gutterBottom>
-                Recent Network Traffic
-              </Typography>
-              <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
-                <Table stickyHeader size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Timestamp</TableCell>
-                      <TableCell>Method</TableCell>
-                      <TableCell>Source</TableCell>
-                      <TableCell>Destination</TableCell>
-                      <TableCell>Port</TableCell>
-                      <TableCell>Protocol</TableCell>
-                      <TableCell align="right">Bytes</TableCell>
-                      <TableCell align="right">Status</TableCell>
-                      <TableCell align="right">Response (ms)</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {realTimeData.networkFlow.length > 0 ? (
-                      realTimeData.networkFlow.slice(-20).reverse().map((entry, index) => (
-                        <TableRow key={index} hover>
-                          <TableCell>{formatTimestamp(entry.timestamp)}</TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={entry.method || 'N/A'} 
-                              size="small" 
-                              color={entry.method === 'GET' ? 'primary' : entry.method === 'POST' ? 'secondary' : 'default'}
-                            />
-                          </TableCell>
-                          <TableCell>{entry.source_ip || 'N/A'}</TableCell>
-                          <TableCell>
-                            <Box>
-                              <Typography variant="body2">{entry.hostname || entry.destination_ip || 'N/A'}</Typography>
-                              {entry.is_secure && (
-                                <Chip label="HTTPS" size="small" color="success" sx={{ ml: 0.5, height: 16, fontSize: '0.65rem' }} />
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell>{entry.destination_port || entry.port || 'N/A'}</TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {entry.protocol || entry.http_version || 'N/A'}
-                            </Typography>
-                            {entry.connection_type && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                {entry.connection_type}
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            <Box>
-                              <Typography variant="body2">{formatBytes(entry.bytes || (entry.bytes_sent + entry.bytes_received) || 0)}</Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                ↑{formatBytes(entry.bytes_sent || 0)} ↓{formatBytes(entry.bytes_received || 0)}
-                              </Typography>
-                            </Box>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Chip 
-                              label={entry.status_code || 'N/A'} 
-                              size="small" 
-                              color={
-                                entry.status_code >= 200 && entry.status_code < 300 ? 'success' :
-                                entry.status_code >= 300 && entry.status_code < 400 ? 'info' :
-                                entry.status_code >= 400 ? 'error' : 'default'
-                              }
-                            />
-                          </TableCell>
-                          <TableCell align="right">
-                            <Box>
-                              <Typography variant="body2">{entry.response_time ? entry.response_time.toFixed(0) : 'N/A'} ms</Typography>
-                              {(entry.dns_time_ms || entry.tcp_connect_time_ms || entry.ssl_handshake_time_ms) && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  DNS:{entry.dns_time_ms?.toFixed(0) || 0}ms
-                                  TCP:{entry.tcp_connect_time_ms?.toFixed(0) || 0}ms
-                                  {entry.ssl_handshake_time_ms > 0 && ` SSL:${entry.ssl_handshake_time_ms.toFixed(0)}ms`}
-                                </Typography>
-                              )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={9} align="center">
-                          No network traffic data available
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              
-              {/* Detailed Network Information Panel */}
-              {realTimeData.networkFlow.length > 0 && (
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Detailed Network Information
-                  </Typography>
-                  <Grid container spacing={2}>
-                    {realTimeData.networkFlow.slice(-5).reverse().map((entry, index) => (
-                      <Grid item xs={12} md={6} key={index}>
-                        <Card variant="outlined">
-                          <CardContent>
-                            <Typography variant="subtitle2" gutterBottom>
-                              Request #{index + 1} - {entry.method || 'N/A'} {entry.path || 'N/A'}
-                            </Typography>
-                            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 1 }}>
-                              <Typography variant="caption"><strong>Source:</strong> {entry.source_ip}:{entry.source_port || 'N/A'}</Typography>
-                              <Typography variant="caption"><strong>Destination:</strong> {entry.destination_ip || entry.hostname}:{entry.destination_port || entry.port || 'N/A'}</Typography>
-                              <Typography variant="caption"><strong>Scheme:</strong> {entry.scheme || 'N/A'}</Typography>
-                              <Typography variant="caption"><strong>Connection:</strong> {entry.connection_type || 'N/A'}</Typography>
-                              <Typography variant="caption"><strong>HTTP Version:</strong> {entry.http_version || entry.protocol || 'N/A'}</Typography>
-                              <Typography variant="caption"><strong>Status:</strong> {entry.status_code || 'N/A'}</Typography>
-                              <Typography variant="caption"><strong>Total Time:</strong> {entry.response_time?.toFixed(2) || 'N/A'} ms</Typography>
-                              <Typography variant="caption"><strong>Redirects:</strong> {entry.redirect_count || 0}</Typography>
-                              {entry.dns_time_ms > 0 && (
-                                <Typography variant="caption"><strong>DNS:</strong> {entry.dns_time_ms.toFixed(2)} ms</Typography>
-                              )}
-                              {entry.tcp_connect_time_ms > 0 && (
-                                <Typography variant="caption"><strong>TCP:</strong> {entry.tcp_connect_time_ms.toFixed(2)} ms</Typography>
-                              )}
-                              {entry.ssl_handshake_time_ms > 0 && (
-                                <Typography variant="caption"><strong>SSL:</strong> {entry.ssl_handshake_time_ms.toFixed(2)} ms</Typography>
-                              )}
-                              {entry.content_type && (
-                                <Typography variant="caption"><strong>Content-Type:</strong> {entry.content_type}</Typography>
-                              )}
-                              {entry.server && (
-                                <Typography variant="caption"><strong>Server:</strong> {entry.server}</Typography>
-                              )}
-                              {entry.user_agent && (
-                                <Typography variant="caption" sx={{ gridColumn: '1 / -1' }}>
-                                  <strong>User-Agent:</strong> {entry.user_agent.substring(0, 80)}
-                                  {entry.user_agent.length > 80 ? '...' : ''}
-                                </Typography>
-                              )}
-                            </Box>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              )}
-            </Box>
-          )}
-
-          {/* All Logs Tab */}
-          {activeTab === 2 && (
-            <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">
-                  All Network Logs ({logsPagination.total.toLocaleString()} total)
+                  Network Traffic ({allLogs.length > 0 ? allLogs.length : realTimeData.networkFlow.length} entries)
                 </Typography>
                 <Box>
                   <Button 
@@ -560,28 +454,132 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
               
               {logsLoading && <LinearProgress sx={{ mb: 2 }} />}
               
-              <TableContainer component={Paper} sx={{ maxHeight: '70vh', overflow: 'auto' }}>
+              <TableContainer component={Paper} sx={{ maxHeight: '75vh', overflow: 'auto' }}>
                 <Table stickyHeader size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>Timestamp</TableCell>
                       <TableCell>Method</TableCell>
+                      <TableCell>Path</TableCell>
                       <TableCell>Source IP:Port</TableCell>
                       <TableCell>Destination</TableCell>
-                      <TableCell>Hostname</TableCell>
-                      <TableCell>Path</TableCell>
-                      <TableCell>Protocol</TableCell>
+                      <TableCell>Scheme</TableCell>
+                      <TableCell>Protocol/Connection</TableCell>
                       <TableCell align="right">Status</TableCell>
                       <TableCell align="right">Bytes Sent</TableCell>
                       <TableCell align="right">Bytes Recv</TableCell>
-                      <TableCell align="right">Time (ms)</TableCell>
-                      <TableCell>Details</TableCell>
+                      <TableCell align="right">Total Time (ms)</TableCell>
+                      <TableCell>Timing (DNS/TCP/SSL)</TableCell>
+                      <TableCell>Redirects</TableCell>
+                      <TableCell>Content-Type</TableCell>
+                      <TableCell>Server</TableCell>
+                      <TableCell>User-Agent</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {allLogs.length > 0 ? (
-                      allLogs.map((entry, index) => (
-                        <TableRow key={index} hover>
+                    {(allLogs.length > 0 ? allLogs : realTimeData.networkFlow).length > 0 ? (
+                      (allLogs.length > 0 ? allLogs : realTimeData.networkFlow).map((entry, index) => {
+                        const entryKey = `entry-${index}-${entry.timestamp || index}`;
+                        const handleRowClick = async () => {
+                          setModalLoading(true);
+                          setModalOpen(true);
+                          
+                          // Prefer entry from allLogs (API) as it has all fields
+                          let fullEntry = entry;
+                          
+                          // Try to find full entry in allLogs first (they come from API with all fields)
+                          if (allLogs.length > 0) {
+                            const matchingInAllLogs = allLogs.find(e => {
+                              // Exact timestamp match
+                              if (e.timestamp === entry.timestamp) return true;
+                              // Match by key attributes
+                              if (e.source_ip === entry.source_ip && 
+                                  (e.destination_ip === entry.destination_ip || e.hostname === entry.hostname || e.destination_ip === entry.hostname) &&
+                                  e.method === entry.method &&
+                                  (e.path === entry.path || e.path === entry.uri || e.path === (entry.path || entry.uri))) {
+                                return true;
+                              }
+                              return false;
+                            });
+                            if (matchingInAllLogs && (matchingInAllLogs.tls_version || matchingInAllLogs.cipher_suite)) {
+                              fullEntry = matchingInAllLogs;
+                              console.log('Using entry from allLogs with fields:', matchingInAllLogs.tls_version, matchingInAllLogs.cipher_suite);
+                            }
+                          }
+                          
+                          // If entry still doesn't have all fields, fetch from API
+                          if (!fullEntry.tls_version && !fullEntry.cipher_suite) {
+                            try {
+                              console.log('Fetching full entry from API...');
+                              const response = await fetch(`http://localhost:8000/api/v1/log-analysis/logs/all?limit=500&offset=0`);
+                              if (response.ok) {
+                                const data = await response.json();
+                                console.log('Fetched', data.logs?.length, 'entries from API');
+                                // Find matching entry with multiple strategies
+                                const matchingEntry = data.logs?.find(e => {
+                                  // Strategy 1: Exact timestamp match
+                                  if (e.timestamp === entry.timestamp) {
+                                    console.log('Matched by exact timestamp');
+                                    return true;
+                                  }
+                                  // Strategy 2: Match by source/dest/method/path (flexible hostname matching)
+                                  if (e.source_ip === entry.source_ip && 
+                                      e.method === entry.method) {
+                                    const destMatch = e.destination_ip === entry.destination_ip || 
+                                                    e.hostname === entry.hostname || 
+                                                    e.destination_ip === entry.hostname ||
+                                                    e.hostname === entry.destination_ip;
+                                    const pathMatch = e.path === entry.path || 
+                                                    e.path === entry.uri || 
+                                                    e.path === (entry.path || entry.uri);
+                                    if (destMatch && pathMatch) {
+                                      console.log('Matched by IP/method/path');
+                                      return true;
+                                    }
+                                  }
+                                  return false;
+                                });
+                                if (matchingEntry) {
+                                  fullEntry = matchingEntry;
+                                  console.log('✅ Found full entry from API with fields:', {
+                                    tls_version: matchingEntry.tls_version,
+                                    cipher_suite: matchingEntry.cipher_suite,
+                                    compression: matchingEntry.compression_algorithm,
+                                    x_content_type_options: matchingEntry.x_content_type_options
+                                  });
+                                } else {
+                                  console.log('❌ No matching entry found in API');
+                                  console.log('Looking for entry with:', {
+                                    timestamp: entry.timestamp,
+                                    source: entry.source_ip,
+                                    dest: entry.destination_ip || entry.hostname,
+                                    method: entry.method,
+                                    path: entry.path || entry.uri
+                                  });
+                                  // Fallback: just use the first entry from API if no match
+                                  if (data.logs && data.logs.length > 0) {
+                                    console.log('Using first entry from API as fallback');
+                                    fullEntry = data.logs[0];
+                                  }
+                                }
+                              }
+                            } catch (error) {
+                              console.error('Failed to fetch full entry:', error);
+                            }
+                          }
+                          
+                          console.log('Setting selectedEntry with', Object.keys(fullEntry).length, 'fields');
+                          console.log('Sample fields:', {
+                            tls_version: fullEntry.tls_version,
+                            cipher_suite: fullEntry.cipher_suite,
+                            compression_algorithm: fullEntry.compression_algorithm,
+                            x_content_type_options: fullEntry.x_content_type_options
+                          });
+                          setSelectedEntry(fullEntry);
+                          setModalLoading(false);
+                        };
+                        return (
+                          <TableRow key={entryKey} hover onClick={handleRowClick} sx={{ cursor: 'pointer' }}>
                           <TableCell>
                             <Typography variant="caption">
                               {formatTimestamp(entry.timestamp)}
@@ -591,8 +589,18 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
                             <Chip 
                               label={entry.method || 'N/A'} 
                               size="small" 
-                              color={entry.method === 'GET' ? 'primary' : entry.method === 'POST' ? 'secondary' : 'default'}
+                              color={entry.method === 'GET' ? 'primary' : entry.method === 'POST' ? 'secondary' : entry.method === 'PUT' ? 'warning' : 'default'}
                             />
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {entry.path || entry.uri || 'N/A'}
+                            </Typography>
+                            {entry.query && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                ?{entry.query.substring(0, 30)}
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2">
@@ -602,27 +610,15 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
                           <TableCell>
                             <Box>
                               <Typography variant="body2">
-                                {entry.destination_ip || 'N/A'}:{entry.destination_port || entry.port || 'N/A'}
+                                {entry.hostname || entry.destination_ip || 'N/A'}:{entry.destination_port || entry.port || 'N/A'}
                               </Typography>
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Box>
-                              <Typography variant="body2">{entry.hostname || 'N/A'}</Typography>
                               {entry.is_secure && (
                                 <Chip label="HTTPS" size="small" color="success" sx={{ height: 16, fontSize: '0.65rem', mt: 0.5 }} />
                               )}
                             </Box>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {entry.path || entry.uri || 'N/A'}
-                            </Typography>
-                            {entry.query && (
-                              <Typography variant="caption" color="text.secondary">
-                                ?{entry.query.substring(0, 30)}
-                              </Typography>
-                            )}
+                            <Typography variant="body2">{entry.scheme || 'N/A'}</Typography>
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" color="text.secondary">
@@ -656,99 +652,273 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
                             </Typography>
                           </TableCell>
                           <TableCell align="right">
+                            <Typography variant="body2">
+                              {entry.response_time_ms || entry.duration || entry.response_time ? 
+                                (entry.response_time_ms || (entry.duration ? (entry.duration * 1000) : entry.response_time)).toFixed(2) : 'N/A'} ms
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
                             <Box>
-                              <Typography variant="body2">
-                                {entry.response_time_ms || entry.duration ? (entry.response_time_ms || (entry.duration * 1000)).toFixed(0) : 'N/A'} ms
-                              </Typography>
-                              {(entry.dns_time_ms || entry.tcp_connect_time_ms || entry.ssl_handshake_time_ms) && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  DNS:{entry.dns_time_ms?.toFixed(0) || 0} TCP:{entry.tcp_connect_time_ms?.toFixed(0) || 0}
-                                  {entry.ssl_handshake_time_ms > 0 && ` SSL:${entry.ssl_handshake_time_ms.toFixed(0)}`}
-                                </Typography>
+                              {(entry.dns_time_ms || entry.tcp_connect_time_ms || entry.ssl_handshake_time_ms) ? (
+                                <>
+                                  <Typography variant="caption" display="block">
+                                    DNS: {entry.dns_time_ms?.toFixed(2) || 0} ms
+                                  </Typography>
+                                  <Typography variant="caption" display="block">
+                                    TCP: {entry.tcp_connect_time_ms?.toFixed(2) || 0} ms
+                                  </Typography>
+                                  {entry.ssl_handshake_time_ms > 0 && (
+                                    <Typography variant="caption" display="block">
+                                      SSL: {entry.ssl_handshake_time_ms.toFixed(2)} ms
+                                    </Typography>
+                                  )}
+                                </>
+                              ) : (
+                                <Typography variant="caption" color="text.secondary">N/A</Typography>
                               )}
                             </Box>
                           </TableCell>
                           <TableCell>
-                            <Box>
-                              {entry.content_type && (
-                                <Typography variant="caption" display="block">
-                                  {entry.content_type.split(';')[0]}
-                                </Typography>
-                              )}
-                              {entry.server && (
-                                <Typography variant="caption" color="text.secondary" display="block">
-                                  {entry.server}
-                                </Typography>
-                              )}
-                              {entry.redirect_count > 0 && (
-                                <Chip label={`${entry.redirect_count} redirects`} size="small" sx={{ mt: 0.5, height: 18 }} />
-                              )}
-                            </Box>
+                            <Typography variant="body2">{entry.redirect_count || 0}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" sx={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {entry.content_type ? entry.content_type.split(';')[0] : 'N/A'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption">{entry.server || 'N/A'}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="caption" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {entry.user_agent ? entry.user_agent.substring(0, 60) : 'N/A'}
+                              {entry.user_agent && entry.user_agent.length > 60 ? '...' : ''}
+                            </Typography>
                           </TableCell>
                         </TableRow>
-                      ))
+                        )
+                      })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={12} align="center">
-                          {logsLoading ? 'Loading logs...' : 'No logs available. Make API calls in the Real Application to see network traffic.'}
+                        <TableCell colSpan={16} align="center">
+                          {logsLoading ? 'Loading network traffic data...' : 'No network traffic data available. Make API calls in the Real Application to see network traffic.'}
                         </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
                 </Table>
               </TableContainer>
-              
-              {/* Expandable Details for Selected Log */}
-              {allLogs.length > 0 && (
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Complete Network Data (Latest {Math.min(10, allLogs.length)} entries)
-                  </Typography>
-                  <Grid container spacing={2}>
-                    {allLogs.slice(0, 10).map((entry, index) => (
-                      <Grid item xs={12} key={index}>
-                        <Card variant="outlined">
-                          <CardContent>
-                            <Typography variant="subtitle2" gutterBottom>
-                              Log #{index + 1} - {entry.method || 'N/A'} {entry.path || entry.uri || 'N/A'}
-                            </Typography>
-                            <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
-                              {Object.entries(entry).map(([key, value]) => {
-                                if (key === 'parsed_fields' || key === 'raw_log') return null;
-                                if (value === null || value === undefined || value === '') return null;
-                                if (typeof value === 'object' && !Array.isArray(value)) {
-                                  return (
-                                    <Box key={key}>
-                                      <Typography variant="caption" color="text.secondary">
-                                        <strong>{key}:</strong>
-                                      </Typography>
-                                      <Typography variant="caption" display="block">
-                                        {JSON.stringify(value).substring(0, 100)}
-                                        {JSON.stringify(value).length > 100 ? '...' : ''}
-                                      </Typography>
+
+              {/* Detail Modal */}
+              <Dialog 
+                open={modalOpen} 
+                onClose={() => setModalOpen(false)} 
+                maxWidth="lg" 
+                fullWidth
+                PaperProps={{
+                  sx: { 
+                    maxHeight: '90vh',
+                    backgroundColor: '#1a1d38',
+                    color: '#ffffff'
+                  }
+                }}
+              >
+                <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1d38', color: '#ffffff' }}>
+                  <Box>
+                    <Typography variant="h6" sx={{ color: '#ffffff', fontWeight: 'bold' }}>Complete Network & Security Data</Typography>
+                    <Typography variant="caption" sx={{ color: '#b0b0b0', fontSize: '0.75rem' }}>
+                      {selectedEntry && formatTimestamp(selectedEntry.timestamp)}
+                    </Typography>
+                  </Box>
+                  <IconButton onClick={() => setModalOpen(false)} size="small" aria-label="close" sx={{ color: '#ffffff' }}>
+                    <CloseIcon />
+                  </IconButton>
+                </DialogTitle>
+                <Divider />
+                <DialogContent sx={{ overflowY: 'auto', backgroundColor: '#1a1d38', color: '#ffffff' }}>
+                  {modalLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <LinearProgress sx={{ mb: 2 }} />
+                        <Typography sx={{ color: '#ffffff' }}>Loading complete network data...</Typography>
+                      </Box>
+                    </Box>
+                  ) : selectedEntry ? (
+                    <Box sx={{ mt: 1 }}>
+                      {/* Debug: Show what we have */}
+                      <Alert severity="info" sx={{ mb: 2, backgroundColor: '#1e3a5f', color: '#90caf9' }}>
+                        <Typography variant="body2" sx={{ color: '#90caf9', fontWeight: 'medium' }}>
+                          Entry loaded: {selectedEntry.timestamp ? 'Yes' : 'No'} | 
+                          TLS: {selectedEntry.tls_version || 'Missing'} | 
+                          Fields: {Object.keys(selectedEntry).filter(k => selectedEntry[k] !== null && selectedEntry[k] !== undefined).length}
+                        </Typography>
+                      </Alert>
+                      <Grid container spacing={2}>
+                                  {/* SSL/TLS Security */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>SSL/TLS Security</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>TLS Version: {selectedEntry.tls_version || (selectedEntry.is_secure ? 'TLS (inferred)' : 'N/A')}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Cipher Suite: {selectedEntry.cipher_suite || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Cert Subject: {selectedEntry.cert_subject || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Cert Issuer: {selectedEntry.cert_issuer || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Cert Valid: {selectedEntry.cert_valid !== undefined ? (selectedEntry.cert_valid ? 'Yes ✓' : 'No ✗') : (selectedEntry.is_secure ? 'Yes (HTTPS)' : 'N/A')}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Valid From: {selectedEntry.cert_valid_from || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Valid To: {selectedEntry.cert_valid_to || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>SAN: {selectedEntry.cert_san ? (Array.isArray(selectedEntry.cert_san) ? selectedEntry.cert_san.join(', ') : selectedEntry.cert_san) : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ mt: 0.5, color: '#212121', fontSize: '0.75rem' }}>Secure Connection: {selectedEntry.is_secure ? 'Yes (HTTPS)' : 'No (HTTP)'}</Typography>
                                     </Box>
-                                  );
-                                }
-                                return (
-                                  <Typography key={key} variant="caption">
-                                    <strong>{key}:</strong> {String(value).substring(0, 100)}
-                                    {String(value).length > 100 ? '...' : ''}
-                                  </Typography>
-                                );
-                              })}
-                            </Box>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              )}
+                                  </Grid>
+                                  
+                                  {/* Geographic Data */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Geographic Data</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', color: '#ffffff', fontSize: '0.75rem' }}>Source:</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Country: {selectedEntry.source_country || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>ASN: {selectedEntry.source_asn || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>ISP: {selectedEntry.source_isp || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ fontWeight: 'bold', mt: 1, color: 'text.primary' }}>Destination:</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Country: {selectedEntry.destination_country || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>ASN: {selectedEntry.destination_asn || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>ISP: {selectedEntry.destination_isp || 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* DNS Details */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>DNS Details</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>DNS Server: {selectedEntry.dns_server || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Record Type: {selectedEntry.dns_record_type || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>DNS TTL: {selectedEntry.dns_ttl || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>DNS Time: {selectedEntry.dns_time_ms ? `${selectedEntry.dns_time_ms.toFixed(2)} ms` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Resolved IPs: {selectedEntry.resolved_ips ? (Array.isArray(selectedEntry.resolved_ips) ? selectedEntry.resolved_ips.join(', ') : selectedEntry.resolved_ips) : (selectedEntry.destination_ip || 'N/A')}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Connection State & Packets */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Connection State & Packets</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>State: {selectedEntry.connection_state || selectedEntry.connection_type || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Connection Type: {selectedEntry.connection_type || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Packets Sent: {selectedEntry.packet_count_sent || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Packets Received: {selectedEntry.packet_count_received || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Avg Packet Size Sent: {selectedEntry.avg_packet_size_sent ? `${selectedEntry.avg_packet_size_sent} bytes` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Avg Packet Size Received: {selectedEntry.avg_packet_size_received ? `${selectedEntry.avg_packet_size_received} bytes` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>IP TTL: {selectedEntry.ttl || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>MSS: {selectedEntry.mss || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Fragmentation: {selectedEntry.fragmentation !== undefined ? (selectedEntry.fragmentation ? 'Yes' : 'No') : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Connection Reused: {selectedEntry.connection_reused !== undefined ? (selectedEntry.connection_reused ? 'Yes' : 'No') : 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Security Headers */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Security Headers</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>CSP: {selectedEntry.content_security_policy ? '✓' : (selectedEntry.response_headers?.['Content-Security-Policy'] ? '✓ (from headers)' : '✗')}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>HSTS: {selectedEntry.strict_transport_security ? '✓' : (selectedEntry.response_headers?.['Strict-Transport-Security'] || selectedEntry.response_headers?.['strict-transport-security'] ? '✓ (from headers)' : '✗')}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>X-Frame-Options: {selectedEntry.x_frame_options || selectedEntry.response_headers?.['X-Frame-Options'] || selectedEntry.response_headers?.['x-frame-options'] || '✗'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>X-Content-Type-Options: {selectedEntry.x_content_type_options || selectedEntry.response_headers?.['X-Content-Type-Options'] || selectedEntry.response_headers?.['x-content-type-options'] || '✗'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>X-XSS-Protection: {selectedEntry.x_xss_protection || selectedEntry.response_headers?.['X-XSS-Protection'] || selectedEntry.response_headers?.['x-xss-protection'] || '✗'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Referrer-Policy: {selectedEntry.referrer_policy || selectedEntry.response_headers?.['Referrer-Policy'] || selectedEntry.response_headers?.['referrer-policy'] || '✗'}</Typography>
+                                      {selectedEntry.response_headers && (
+                                        <Typography variant="caption" display="block" sx={{ mt: 0.5, fontSize: '0.65rem', color: '#b0b0b0' }}>
+                                          (Total headers: {Object.keys(selectedEntry.response_headers).length})
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Authentication */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Authentication</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Method: {selectedEntry.auth_method || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Token Type: {selectedEntry.auth_token_type || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Session ID: {selectedEntry.session_id || 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* IP Reputation & Threats */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>IP Reputation & Threats</Typography>
+                                    <Box sx={{ mt: 1, p: 1, bgcolor: selectedEntry.is_malicious_ip ? '#4a1a1a' : '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Reputation Score: {selectedEntry.ip_reputation_score ? `${selectedEntry.ip_reputation_score}/100` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: selectedEntry.is_malicious_ip ? '#ff5252' : '#e0e0e0', fontSize: '0.75rem' }}>
+                                        Malicious IP: {selectedEntry.is_malicious_ip ? 'YES ⚠️' : 'No'}
+                                      </Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Threat Types: {selectedEntry.threat_types ? (Array.isArray(selectedEntry.threat_types) ? selectedEntry.threat_types.join(', ') : selectedEntry.threat_types) : 'None'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Threat Confidence: {selectedEntry.threat_confidence ? `${(selectedEntry.threat_confidence * 100).toFixed(1)}%` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Geo Risk Score: {selectedEntry.geo_risk_score ? `${selectedEntry.geo_risk_score}/100` : 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Performance & Compression */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Performance & Compression</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Compression: {selectedEntry.compression_algorithm || selectedEntry.content_encoding || 'None'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Compression Ratio: {selectedEntry.compression_ratio ? selectedEntry.compression_ratio.toFixed(2) : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Response Time: {selectedEntry.response_time_ms ? `${selectedEntry.response_time_ms.toFixed(2)} ms` : selectedEntry.duration ? `${(selectedEntry.duration * 1000).toFixed(2)} ms` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>DNS Time: {selectedEntry.dns_time_ms ? `${selectedEntry.dns_time_ms.toFixed(2)} ms` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>TCP Connect: {selectedEntry.tcp_connect_time_ms ? `${selectedEntry.tcp_connect_time_ms.toFixed(2)} ms` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>SSL Handshake: {selectedEntry.ssl_handshake_time_ms ? `${selectedEntry.ssl_handshake_time_ms.toFixed(2)} ms` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Bandwidth Usage: {selectedEntry.bandwidth_usage ? `${selectedEntry.bandwidth_usage.toFixed(2)} KB/s` : (selectedEntry.bytes_total && selectedEntry.duration ? `${((selectedEntry.bytes_total / selectedEntry.duration) / 1024).toFixed(2)} KB/s` : 'N/A')}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Device Fingerprinting */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Device Fingerprinting</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>OS: {selectedEntry.os_name ? `${selectedEntry.os_name} ${selectedEntry.os_version || ''}` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Browser: {selectedEntry.browser_name ? `${selectedEntry.browser_name} ${selectedEntry.browser_version || ''}` : 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Device Type: {selectedEntry.device_type || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Fingerprint: {selectedEntry.client_fingerprint ? selectedEntry.client_fingerprint.substring(0, 40) + '...' : 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Connection Reuse */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Connection Reuse</Typography>
+                                    <Box sx={{ mt: 1, p: 1.5, bgcolor: '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Reused: {selectedEntry.connection_reused ? 'Yes' : 'No'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Connection ID: {selectedEntry.connection_id || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Keep-Alive: {selectedEntry.keep_alive_duration ? `${selectedEntry.keep_alive_duration.toFixed(2)}s` : 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                  
+                                  {/* Errors & Rate Limiting */}
+                                  <Grid item xs={12} md={6}>
+                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'primary.main' }}>Errors & Rate Limiting</Typography>
+                                    <Box sx={{ mt: 1, p: 1, bgcolor: selectedEntry.error_message ? '#3a2815' : '#0f1324', borderRadius: 1, border: '1px solid #2d3142' }}>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Error: {selectedEntry.error_message || 'None'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Error Type: {selectedEntry.error_type || 'N/A'}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Retry Count: {selectedEntry.retry_count || 0}</Typography>
+                                      <Typography variant="caption" display="block" sx={{ color: '#e0e0e0', fontSize: '0.75rem' }}>Rate Limit: {selectedEntry.rate_limit_remaining !== undefined && selectedEntry.rate_limit_remaining !== null ? `${selectedEntry.rate_limit_remaining}/${selectedEntry.rate_limit_limit || 'N/A'}` : 'N/A'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                </Grid>
+                    </Box>
+                  ) : (
+                    <Alert severity="warning">No entry data available</Alert>
+                  )}
+                </DialogContent>
+                <Divider />
+                <DialogActions sx={{ backgroundColor: '#1a1d38', color: '#ffffff', borderTop: '1px solid #2d3142' }}>
+                  <Button onClick={() => setModalOpen(false)} variant="contained" color="primary" sx={{ backgroundColor: '#1976d2', color: '#ffffff' }}>
+                    Close
+                  </Button>
+                </DialogActions>
+              </Dialog>
             </Box>
           )}
 
           {/* Threat Alerts Tab */}
-          {activeTab === 3 && (
+          {activeTab === 2 && (
             <Box>
               <Typography variant="h6" gutterBottom>
                 Threat Alerts
