@@ -35,6 +35,7 @@ import {
   Security as SecurityIcon,
   Timeline as TimelineIcon,
   Upload as UploadIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import {
   LineChart,
@@ -346,13 +347,31 @@ const LogAnalysisDashboard = ({ onShowNotification }) => {
       </Grid>
 
       {/* Tabs */}
-      <Card>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={activeTab} onChange={handleTabChange}>
-            <Tab label="Overview" />
-            <Tab label="Network Traffic" />
-            <Tab label="All Logs" />
-            <Tab label="Threat Alerts" />
+      <Card sx={{ 
+        borderRadius: 3, 
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)'
+      }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'rgba(0, 0, 0, 0.02)' }}>
+          <Tabs 
+            value={activeTab} 
+            onChange={handleTabChange}
+            sx={{
+              '& .MuiTab-root': {
+                fontWeight: 600,
+                textTransform: 'none',
+                fontSize: '0.95rem',
+                minHeight: 64,
+              },
+              '& .Mui-selected': {
+                color: 'primary.main',
+              }
+            }}
+          >
+            <Tab label="Overview" icon={<TimelineIcon />} iconPosition="start" />
+            <Tab label="Network Traffic" icon={<SecurityIcon />} iconPosition="start" />
+            <Tab label="All Logs" icon={<AssessmentIcon />} iconPosition="start" />
+            <Tab label="Threat Alerts" icon={<WarningIcon />} iconPosition="start" />
           </Tabs>
         </Box>
 

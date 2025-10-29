@@ -26,12 +26,14 @@ import {
   Security as SecurityIcon,
   Storage as StorageIcon,
   CloudUpload as UploadIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
 
 import Dashboard from './components/Dashboard';
 import DatasetManagement from './components/DatasetManagement';
 import RealTimeMonitoring from './components/RealTimeMonitoring';
 import LogAnalysisDashboard from './components/LogAnalysisDashboard';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { ApiService } from './services/ApiService';
 
 const drawerWidth = 240;
@@ -46,6 +48,7 @@ export const useNavigationBlock = () => useContext(NavigationContext);
 
 const menuItems = [
   { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+  { title: 'Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
   { title: 'Real-time Monitoring', icon: <SecurityIcon />, path: '/monitoring' },
   { title: 'Log Analysis', icon: <UploadIcon />, path: '/log-analysis' },
   { title: 'Datasets & Models', icon: <StorageIcon />, path: '/datasets' },
@@ -244,6 +247,10 @@ function App() {
               <Route 
                 path="/dashboard" 
                 element={<Dashboard onShowNotification={showNotification} />} 
+              />
+              <Route 
+                path="/analytics" 
+                element={<AnalyticsDashboard onShowNotification={showNotification} />} 
               />
               <Route 
                 path="/monitoring" 

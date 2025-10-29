@@ -328,14 +328,27 @@ const Dashboard = ({ onShowNotification }) => {
   }
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom sx={{ color: 'primary.main', fontWeight: 'bold' }}>
-        NIDS Dashboard
-      </Typography>
+    <Box sx={{ p: 3, bgcolor: 'background.default', minHeight: '100vh' }}>
+      {/* Header Section with Gradient */}
+      <Box sx={{ 
+        mb: 4, 
+        p: 3, 
+        borderRadius: 2, 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: 'white',
+        boxShadow: 3
+      }}>
+        <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
+          Network Intrusion Detection System
+        </Typography>
+        <Typography variant="body1" sx={{ opacity: 0.9 }}>
+          Real-time security monitoring and threat analysis dashboard
+        </Typography>
+      </Box>
 
       {/* System Status Alert - Only show if explicitly unhealthy, not for unknown */}
       {systemHealth === 'error' && (
-        <Alert severity="error" sx={{ mb: 3 }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
           System health check failed. Please check backend connection.
         </Alert>
       )}
@@ -464,11 +477,18 @@ const Dashboard = ({ onShowNotification }) => {
       {/* Charts and Analytics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={8}>
-          <Card>
+          <Card sx={{ 
+            borderRadius: 3, 
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)'
+          }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Attack Type Distribution
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 0 }}>
+                  Attack Type Distribution
+                </Typography>
+                <Chip label="Real-time" color="primary" size="small" />
+              </Box>
               <AttackTypeChart data={Object.entries(attackBreakdown).map(([name, value]) => ({
                 name,
                 value,
@@ -479,11 +499,17 @@ const Dashboard = ({ onShowNotification }) => {
         </Grid>
         
         <Grid item xs={12} md={4}>
-          <Card>
+          <Card sx={{ 
+            borderRadius: 3, 
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)'
+          }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Performance Metrics
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', mb: 0 }}>
+                  Performance Metrics
+                </Typography>
+              </Box>
               <PerformanceChart />
             </CardContent>
           </Card>

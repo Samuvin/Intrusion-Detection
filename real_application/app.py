@@ -89,6 +89,93 @@ APIS = {
     'geocoding': {
         'forward': 'https://nominatim.openstreetmap.org/search',
         'reverse': 'https://nominatim.openstreetmap.org/reverse'
+    },
+    # Cloud Services APIs - Real endpoints that generate network traffic
+    'aws': {
+        # AWS S3 public bucket example
+        's3_bucket': 'https://s3.amazonaws.com',
+        # AWS status page
+        'status': 'https://status.aws.amazon.com/data.json',
+        # AWS CloudFront CDN
+        'cloudfront': 'https://d1.awsstatic.com',
+        # AWS API Gateway public endpoint
+        'api_gateway': 'https://execute-api.us-east-1.amazonaws.com/v1/example',
+    },
+    'azure': {
+        # Azure status API
+        'status': 'https://status.azure.com/en-us/status',
+        # Azure CDN
+        'cdn': 'https://azure.microsoft.com',
+        # Azure Functions public
+        'functions': 'https://functions.azure.com',
+    },
+    'gcp': {
+        # Google Cloud status
+        'status': 'https://status.cloud.google.com/incidents.json',
+        # Google Cloud Storage public
+        'storage': 'https://storage.googleapis.com',
+        # Google Cloud Functions
+        'functions': 'https://cloudfunctions.googleapis.com',
+    },
+    'cloudflare': {
+        # Cloudflare CDN (serves many websites)
+        'cdn': 'https://www.cloudflare.com',
+        # Cloudflare Workers
+        'workers': 'https://workers.cloudflare.com',
+        # Cloudflare API (public endpoints)
+        'api': 'https://api.cloudflare.com/client/v4/ips',
+        # Cloudflare status
+        'status': 'https://www.cloudstatus.com/api/v2/status.json',
+    },
+    'fastly': {
+        # Fastly CDN (serves many websites)
+        'cdn': 'https://www.fastly.com',
+        # Fastly status
+        'status': 'https://status.fastly.com/api/v2/status.json',
+    },
+    'vercel': {
+        # Vercel deployment platform
+        'platform': 'https://vercel.com',
+        # Vercel API
+        'api': 'https://api.vercel.com/v1',
+    },
+    'github': {
+        # GitHub API (public endpoints)
+        'api': 'https://api.github.com',
+        # GitHub content via CDN
+        'cdn': 'https://github.githubassets.com',
+        # GitHub status
+        'status': 'https://www.githubstatus.com/api/v2/status.json',
+    },
+    'gitlab': {
+        # GitLab API
+        'api': 'https://gitlab.com/api/v4',
+        # GitLab CDN
+        'cdn': 'https://assets.gitlab-static.net',
+    },
+    'digitalocean': {
+        # DigitalOcean API
+        'api': 'https://api.digitalocean.com/v2',
+        # DigitalOcean CDN
+        'cdn': 'https://www.digitalocean.com',
+    },
+    'heroku': {
+        # Heroku status
+        'status': 'https://status.heroku.com/api/v4/current-status',
+        # Heroku platform
+        'platform': 'https://www.heroku.com',
+    },
+    'netlify': {
+        # Netlify API
+        'api': 'https://api.netlify.com/api/v1',
+        # Netlify CDN
+        'cdn': 'https://www.netlify.com',
+    },
+    'jsonplaceholder': {
+        # This goes through Cloudflare CDN
+        'posts': 'https://jsonplaceholder.typicode.com/posts',
+        'users': 'https://jsonplaceholder.typicode.com/users',
+        'comments': 'https://jsonplaceholder.typicode.com/comments',
     }
 }
 
@@ -496,6 +583,39 @@ def index():
                 </div>
 
                 <div class="api-section">
+                    <h3>☁️ Cloud Services - Real Endpoints</h3>
+                    <h4>AWS</h4>
+                    <button onclick="callEndpoint('/api/aws/s3', 'GET')">AWS S3</button>
+                    <button onclick="callEndpoint('/api/aws/cloudfront', 'GET')">AWS CloudFront CDN</button>
+                    <button onclick="callEndpoint('/api/aws/status', 'GET')">AWS Status API</button>
+                    <h4>Azure</h4>
+                    <button onclick="callEndpoint('/api/azure/status', 'GET')">Azure Status API</button>
+                    <button onclick="callEndpoint('/api/azure/cdn', 'GET')">Azure CDN</button>
+                    <h4>Google Cloud</h4>
+                    <button onclick="callEndpoint('/api/gcp/status', 'GET')">GCP Status API</button>
+                    <button onclick="callEndpoint('/api/gcp/storage', 'GET')">GCP Storage</button>
+                    <h4>CDN Services</h4>
+                    <button onclick="callEndpoint('/api/cloudflare/cdn', 'GET')">Cloudflare CDN</button>
+                    <button onclick="callEndpoint('/api/cloudflare/ips', 'GET')">Cloudflare IPs API</button>
+                    <button onclick="callEndpoint('/api/cloudflare/status', 'GET')">Cloudflare Status</button>
+                    <button onclick="callEndpoint('/api/fastly/cdn', 'GET')">Fastly CDN</button>
+                    <button onclick="callEndpoint('/api/fastly/status', 'GET')">Fastly Status</button>
+                    <h4>Platform Services</h4>
+                    <button onclick="callEndpoint('/api/github/api', 'GET')">GitHub API</button>
+                    <button onclick="callEndpoint('/api/github/cdn', 'GET')">GitHub CDN</button>
+                    <button onclick="callEndpoint('/api/gitlab/api', 'GET')">GitLab API</button>
+                    <button onclick="callEndpoint('/api/gitlab/cdn', 'GET')">GitLab CDN</button>
+                    <h4>Hosting Services</h4>
+                    <button onclick="callEndpoint('/api/vercel/api', 'GET')">Vercel API</button>
+                    <button onclick="callEndpoint('/api/vercel/platform', 'GET')">Vercel Platform</button>
+                    <button onclick="callEndpoint('/api/netlify/api', 'GET')">Netlify API</button>
+                    <button onclick="callEndpoint('/api/netlify/cdn', 'GET')">Netlify CDN</button>
+                    <button onclick="callEndpoint('/api/digitalocean/api', 'GET')">DigitalOcean API</button>
+                    <button onclick="callEndpoint('/api/digitalocean/cdn', 'GET')">DigitalOcean CDN</button>
+                    <div id="cloud-result" class="result" style="display:none;"></div>
+                </div>
+
+                <div class="api-section">
                     <h3>⚡ Batch Operations</h3>
                     <button onclick="runBatch()">Run Batch (5 calls)</button>
                     <button onclick="runBatch(10)">Run Batch (10 calls)</button>
@@ -667,6 +787,20 @@ def index():
                             () => callEndpoint('/api/httpbin/get', 'GET'),
                             () => callEndpoint('/api/httpbin/post', 'POST'),
                             () => callEndpoint('/api/cat/fact', 'GET'),
+                            () => callEndpoint('/api/aws/s3', 'GET'),
+                            () => callEndpoint('/api/aws/cloudfront', 'GET'),
+                            () => callEndpoint('/api/cloudflare/cdn', 'GET'),
+                            () => callEndpoint('/api/cloudflare/ips', 'GET'),
+                            () => callEndpoint('/api/github/api', 'GET'),
+                            () => callEndpoint('/api/github/cdn', 'GET'),
+                            () => callEndpoint('/api/azure/status', 'GET'),
+                            () => callEndpoint('/api/azure/cdn', 'GET'),
+                            () => callEndpoint('/api/gcp/status', 'GET'),
+                            () => callEndpoint('/api/gcp/storage', 'GET'),
+                            () => callEndpoint('/api/fastly/cdn', 'GET'),
+                            () => callEndpoint('/api/vercel/platform', 'GET'),
+                            () => callEndpoint('/api/netlify/cdn', 'GET'),
+                            () => callEndpoint('/api/digitalocean/cdn', 'GET'),
                             () => callEndpoint('/api/quote/random', 'GET'),
                             () => callEndpoint('/api/countries/usa', 'GET')
                         ];
@@ -1128,6 +1262,352 @@ def stats():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Cloud Services API Endpoints - Real cloud service calls
+@app.route('/api/aws/s3', methods=['GET'])
+def aws_s3():
+    """Call real AWS S3 endpoint."""
+    try:
+        url = APIS['aws']['s3_bucket']
+        response = call_api(url, method='GET', timeout=10)
+        return jsonify({
+            'status': 'success', 
+            'service': 'AWS S3',
+            'data': {'message': 'S3 endpoint called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"AWS S3 call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'AWS S3', 'message': str(e)}), 500
+
+@app.route('/api/aws/cloudfront', methods=['GET'])
+def aws_cloudfront():
+    """Call real AWS CloudFront CDN."""
+    try:
+        url = APIS['aws']['cloudfront']
+        response = call_api(url, method='GET', timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'AWS CloudFront',
+            'data': {'message': 'CloudFront CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"AWS CloudFront call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'AWS CloudFront', 'message': str(e)}), 500
+
+@app.route('/api/aws/status', methods=['GET'])
+def aws_status():
+    """Call real AWS status API."""
+    try:
+        url = APIS['aws']['status']
+        response = call_api(url, timeout=10)
+        if response and response.status_code == 200:
+            try:
+                data = response.json()
+                return jsonify({'status': 'success', 'service': 'AWS Status', 'data': data})
+            except:
+                return jsonify({'status': 'success', 'service': 'AWS Status', 'data': {'message': 'Status API called'}})
+        return jsonify({'status': 'error', 'message': 'AWS status check failed'}), 500
+    except Exception as e:
+        logger.debug(f"AWS status check failed: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/azure/status', methods=['GET'])
+def azure_status():
+    """Call real Azure status API."""
+    try:
+        url = APIS['azure']['status']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success', 
+            'service': 'Azure',
+            'data': {'message': 'Azure status API called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"Azure status check failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Azure', 'message': str(e)}), 500
+
+@app.route('/api/azure/cdn', methods=['GET'])
+def azure_cdn():
+    """Call real Azure CDN."""
+    try:
+        url = APIS['azure']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'Azure CDN',
+            'data': {'message': 'Azure CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"Azure CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Azure CDN', 'message': str(e)}), 500
+
+@app.route('/api/gcp/status', methods=['GET'])
+def gcp_status():
+    """Call real Google Cloud Platform status API."""
+    try:
+        url = APIS['gcp']['status']
+        response = call_api(url, timeout=10)
+        if response and response.status_code == 200:
+            try:
+                return jsonify({'status': 'success', 'service': 'GCP', 'data': response.json()})
+            except:
+                return jsonify({'status': 'success', 'service': 'GCP', 'data': {'message': 'GCP status API called'}})
+        return jsonify({'status': 'error', 'message': 'GCP status check failed'}), 500
+    except Exception as e:
+        logger.debug(f"GCP status check failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'GCP', 'message': str(e)}), 500
+
+@app.route('/api/gcp/storage', methods=['GET'])
+def gcp_storage():
+    """Call real Google Cloud Storage endpoint."""
+    try:
+        url = APIS['gcp']['storage']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'GCP Storage',
+            'data': {'message': 'GCP Storage called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"GCP Storage call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'GCP Storage', 'message': str(e)}), 500
+
+@app.route('/api/cloudflare/cdn', methods=['GET'])
+def cloudflare_cdn():
+    """Call real Cloudflare CDN (many sites use Cloudflare)."""
+    try:
+        url = APIS['cloudflare']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'Cloudflare CDN',
+            'data': {'message': 'Cloudflare CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"Cloudflare CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Cloudflare CDN', 'message': str(e)}), 500
+
+@app.route('/api/cloudflare/ips', methods=['GET'])
+def cloudflare_ips():
+    """Call real Cloudflare IP ranges API."""
+    try:
+        url = APIS['cloudflare']['api']
+        response = call_api(url, timeout=10, headers={'Content-Type': 'application/json'})
+        if response and response.status_code == 200:
+            try:
+                return jsonify({'status': 'success', 'service': 'Cloudflare', 'data': response.json()})
+            except:
+                return jsonify({'status': 'success', 'service': 'Cloudflare', 'data': {'message': 'Cloudflare API called'}})
+        return jsonify({'status': 'error', 'message': 'Cloudflare API failed'}), 500
+    except Exception as e:
+        logger.debug(f"Cloudflare API call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Cloudflare', 'message': str(e)}), 500
+
+@app.route('/api/cloudflare/status', methods=['GET'])
+def cloudflare_status():
+    """Call real Cloudflare status API."""
+    try:
+        url = APIS['cloudflare']['status']
+        response = call_api(url, timeout=10)
+        if response and response.status_code == 200:
+            try:
+                return jsonify({'status': 'success', 'service': 'Cloudflare Status', 'data': response.json()})
+            except:
+                return jsonify({'status': 'success', 'service': 'Cloudflare Status', 'data': {'message': 'Status API called'}})
+        return jsonify({'status': 'error', 'message': 'Cloudflare status failed'}), 500
+    except Exception as e:
+        logger.debug(f"Cloudflare status failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Cloudflare', 'message': str(e)}), 500
+
+@app.route('/api/fastly/cdn', methods=['GET'])
+def fastly_cdn():
+    """Call real Fastly CDN."""
+    try:
+        url = APIS['fastly']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'Fastly CDN',
+            'data': {'message': 'Fastly CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"Fastly CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Fastly CDN', 'message': str(e)}), 500
+
+@app.route('/api/fastly/status', methods=['GET'])
+def fastly_status():
+    """Call real Fastly status API."""
+    try:
+        url = APIS['fastly']['status']
+        response = call_api(url, timeout=10)
+        if response and response.status_code == 200:
+            try:
+                return jsonify({'status': 'success', 'service': 'Fastly', 'data': response.json()})
+            except:
+                return jsonify({'status': 'success', 'service': 'Fastly', 'data': {'message': 'Fastly status API called'}})
+        return jsonify({'status': 'error', 'message': 'Fastly status failed'}), 500
+    except Exception as e:
+        logger.debug(f"Fastly status failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Fastly', 'message': str(e)}), 500
+
+@app.route('/api/github/api', methods=['GET'])
+def github_api():
+    """Call real GitHub API (public endpoints)."""
+    try:
+        url = f"{APIS['github']['api']}/zen"
+        response = call_api(url, timeout=10)
+        if response and response.status_code == 200:
+            return jsonify({
+                'status': 'success', 
+                'service': 'GitHub',
+                'data': {'message': response.text.strip() if response.text else 'GitHub API called', 'status_code': response.status_code}
+            })
+        return jsonify({'status': 'error', 'message': 'GitHub API failed'}), 500
+    except Exception as e:
+        logger.debug(f"GitHub API failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'GitHub', 'message': str(e)}), 500
+
+@app.route('/api/github/cdn', methods=['GET'])
+def github_cdn():
+    """Call real GitHub CDN."""
+    try:
+        url = APIS['github']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'GitHub CDN',
+            'data': {'message': 'GitHub CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"GitHub CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'GitHub CDN', 'message': str(e)}), 500
+
+@app.route('/api/gitlab/api', methods=['GET'])
+def gitlab_api():
+    """Call real GitLab API (public endpoints)."""
+    try:
+        url = f"{APIS['gitlab']['api']}/version"
+        response = call_api(url, timeout=10)
+        if response and response.status_code == 200:
+            try:
+                return jsonify({'status': 'success', 'service': 'GitLab', 'data': response.json()})
+            except:
+                return jsonify({'status': 'success', 'service': 'GitLab', 'data': {'message': 'GitLab API called'}})
+        return jsonify({'status': 'error', 'message': 'GitLab API failed'}), 500
+    except Exception as e:
+        logger.debug(f"GitLab API failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'GitLab', 'message': str(e)}), 500
+
+@app.route('/api/gitlab/cdn', methods=['GET'])
+def gitlab_cdn():
+    """Call real GitLab CDN."""
+    try:
+        url = APIS['gitlab']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'GitLab CDN',
+            'data': {'message': 'GitLab CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"GitLab CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'GitLab CDN', 'message': str(e)}), 500
+
+@app.route('/api/digitalocean/api', methods=['GET'])
+def digitalocean_api():
+    """Call real DigitalOcean API."""
+    try:
+        url = f"{APIS['digitalocean']['api']}/sizes"
+        response = call_api(url, timeout=10, headers={'Content-Type': 'application/json'})
+        if response:
+            return jsonify({
+                'status': 'success', 
+                'service': 'DigitalOcean',
+                'data': {'message': 'DigitalOcean API called', 'status_code': response.status_code}
+            })
+        return jsonify({'status': 'error', 'message': 'DigitalOcean API failed'}), 500
+    except Exception as e:
+        logger.debug(f"DigitalOcean API failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'DigitalOcean', 'message': str(e)}), 500
+
+@app.route('/api/digitalocean/cdn', methods=['GET'])
+def digitalocean_cdn():
+    """Call real DigitalOcean CDN."""
+    try:
+        url = APIS['digitalocean']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'DigitalOcean CDN',
+            'data': {'message': 'DigitalOcean CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"DigitalOcean CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'DigitalOcean CDN', 'message': str(e)}), 500
+
+@app.route('/api/vercel/api', methods=['GET'])
+def vercel_api():
+    """Call real Vercel API."""
+    try:
+        url = f"{APIS['vercel']['api']}/v1"
+        response = call_api(url, timeout=10)
+        if response:
+            return jsonify({
+                'status': 'success', 
+                'service': 'Vercel',
+                'data': {'message': 'Vercel API called', 'status_code': response.status_code}
+            })
+        return jsonify({'status': 'error', 'message': 'Vercel API failed'}), 500
+    except Exception as e:
+        logger.debug(f"Vercel API failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Vercel', 'message': str(e)}), 500
+
+@app.route('/api/vercel/platform', methods=['GET'])
+def vercel_platform():
+    """Call real Vercel platform."""
+    try:
+        url = APIS['vercel']['platform']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'Vercel Platform',
+            'data': {'message': 'Vercel platform called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"Vercel platform call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Vercel Platform', 'message': str(e)}), 500
+
+@app.route('/api/netlify/api', methods=['GET'])
+def netlify_api():
+    """Call real Netlify API."""
+    try:
+        url = f"{APIS['netlify']['api']}/sites"
+        response = call_api(url, timeout=10)
+        if response:
+            return jsonify({
+                'status': 'success', 
+                'service': 'Netlify',
+                'data': {'message': 'Netlify API called', 'status_code': response.status_code}
+            })
+        return jsonify({'status': 'error', 'message': 'Netlify API failed'}), 500
+    except Exception as e:
+        logger.debug(f"Netlify API failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Netlify', 'message': str(e)}), 500
+
+@app.route('/api/netlify/cdn', methods=['GET'])
+def netlify_cdn():
+    """Call real Netlify CDN."""
+    try:
+        url = APIS['netlify']['cdn']
+        response = call_api(url, timeout=10)
+        return jsonify({
+            'status': 'success',
+            'service': 'Netlify CDN',
+            'data': {'message': 'Netlify CDN called', 'status_code': response.status_code if response else 'N/A'}
+        })
+    except Exception as e:
+        logger.debug(f"Netlify CDN call failed: {str(e)}")
+        return jsonify({'status': 'error', 'service': 'Netlify CDN', 'message': str(e)}), 500
 
 # Background thread to generate periodic traffic
 background_traffic = False
