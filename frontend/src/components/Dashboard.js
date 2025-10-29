@@ -20,6 +20,8 @@ import {
   TableRow,
   Paper,
   Divider,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   Security as SecurityIcon,
@@ -27,6 +29,7 @@ import {
   TrendingUp as TrendingUpIcon,
   Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 import MetricCard from './common/MetricCard';
@@ -36,7 +39,7 @@ import RecentActivityList from './common/RecentActivityList';
 import { ApiService } from '../services/ApiService';
 
 const Dashboard = ({ onShowNotification }) => {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Start as false since initial load is silent
   const [metrics, setMetrics] = useState({
     totalConnections: 0,
     threatsBlocked: 0,
@@ -87,19 +90,25 @@ const Dashboard = ({ onShowNotification }) => {
       console.error('Failed to load model info from localStorage:', e);
     }
     
-    loadDashboardData();
+    // Initial load only - no automatic refresh
+    loadDashboardData(true); // Skip loading state on initial load
     
-    // Set up periodic data refresh
-    const interval = setInterval(loadDashboardData, 10000); // Every 10 seconds
-    
-    // Connect to WebSocket for real-time attack breakdown updates
+    // Connect to WebSocket for real-time attack breakdown updates only
+    // No automatic refresh - user must click refresh button to reload full data
     let ws = null;
     try {
       ws = new WebSocket(`ws://localhost:8000/api/v1/monitoring/live`);
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'traffic_update' && data.data?.attack_breakdown) {
-          setAttackBreakdown(data.data.attack_breakdown);
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'traffic_update') {
+            // Only update attack breakdown from WebSocket - lightweight update, no full refresh
+            if (data.data?.attack_breakdown) {
+              setAttackBreakdown(data.data.attack_breakdown);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
         }
       };
       ws.onerror = (error) => {
@@ -110,14 +119,22 @@ const Dashboard = ({ onShowNotification }) => {
     }
     
     return () => {
-      clearInterval(interval);
       if (ws) ws.close();
     };
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (silent = false) => {
+    // Prevent multiple simultaneous refreshes
+    if (loading) {
+      console.debug('Dashboard refresh already in progress, skipping...');
+      return;
+    }
+    
     try {
-      setLoading(true);
+      // Set loading state only if not a silent refresh
+      if (!silent) {
+        setLoading(true);
+      }
 
       // Load multiple data sources in parallel
       const [healthResponse, modelInfo, monitoringStatus, serverStatsResponse, destinationStatsResponse] = await Promise.allSettled([
@@ -275,8 +292,12 @@ const Dashboard = ({ onShowNotification }) => {
 
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
-      onShowNotification('Failed to load dashboard data', 'error');
+      // Only show notifications for non-silent refreshes
+      if (!silent) {
+        console.debug('Dashboard refresh error (non-critical):', error.message);
+      }
     } finally {
+      // Always reset loading state, even for silent refreshes (to allow button clicks)
       setLoading(false);
     }
   };
@@ -316,16 +337,8 @@ const Dashboard = ({ onShowNotification }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ width: '100%', mt: 2 }}>
-        <LinearProgress />
-        <Typography variant="body2" sx={{ mt: 2, textAlign: 'center' }}>
-          Loading dashboard data...
-        </Typography>
-      </Box>
-    );
-  }
+  // Don't show loading screen - refresh happens silently in background
+  // Only show loading state if explicitly triggered by user (not on initial load)
 
   return (
     <Box sx={{ p: 3, bgcolor: 'background.default', minHeight: '100vh' }}>
@@ -336,14 +349,38 @@ const Dashboard = ({ onShowNotification }) => {
         borderRadius: 2, 
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         color: 'white',
-        boxShadow: 3
+        boxShadow: 3,
+        position: 'relative'
       }}>
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
-          Network Intrusion Detection System
-        </Typography>
-        <Typography variant="body1" sx={{ opacity: 0.9 }}>
-          Real-time security monitoring and threat analysis dashboard
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
+              Network Intrusion Detection System
+            </Typography>
+            <Typography variant="body1" sx={{ opacity: 0.9 }}>
+              Real-time security monitoring and threat analysis dashboard
+            </Typography>
+          </Box>
+          <Tooltip title="Refresh Dashboard Data">
+            <IconButton
+              onClick={() => loadDashboardData(false)}
+              disabled={loading}
+              sx={{
+                color: 'white',
+                bgcolor: 'rgba(255, 255, 255, 0.2)',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.3)',
+                },
+                '&.Mui-disabled': {
+                  bgcolor: 'rgba(255, 255, 255, 0.1)',
+                  color: 'rgba(255, 255, 255, 0.5)',
+                }
+              }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* System Status Alert - Only show if explicitly unhealthy, not for unknown */}

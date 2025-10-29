@@ -616,6 +616,14 @@ def index():
                 </div>
 
                 <div class="api-section">
+                    <h3>⚙️ System Controls</h3>
+                    <button id="background-traffic-btn" onclick="toggleBackgroundTraffic()">Start Background Traffic</button>
+                    <div id="background-traffic-status" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px; display: none;">
+                        <strong>Background Traffic:</strong> <span id="bg-status-text">Disabled</span>
+                    </div>
+                </div>
+
+                <div class="api-section">
                     <h3>⚡ Batch Operations</h3>
                     <button onclick="runBatch()">Run Batch (5 calls)</button>
                     <button onclick="runBatch(10)">Run Batch (10 calls)</button>
@@ -819,6 +827,75 @@ def index():
                 document.getElementById('activityLogs').innerHTML = '';
                 updateActivityLog('Logs cleared');
             }
+
+            async function toggleBackgroundTraffic() {
+                const btn = document.getElementById('background-traffic-btn');
+                const statusDiv = document.getElementById('background-traffic-status');
+                const statusText = document.getElementById('bg-status-text');
+                
+                try {
+                    const response = await fetch('/api/background-traffic/toggle', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({})
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.background_traffic) {
+                        btn.textContent = 'Stop Background Traffic';
+                        btn.style.backgroundColor = '#f44336';
+                        statusDiv.style.display = 'block';
+                        statusText.textContent = 'Enabled';
+                        statusText.style.color = '#4caf50';
+                        updateActivityLog('Background traffic generation started');
+                    } else {
+                        btn.textContent = 'Start Background Traffic';
+                        btn.style.backgroundColor = '#4caf50';
+                        statusDiv.style.display = 'block';
+                        statusText.textContent = 'Disabled';
+                        statusText.style.color = '#f44336';
+                        updateActivityLog('Background traffic generation stopped');
+                    }
+                } catch (error) {
+                    updateActivityLog(`✗ Error toggling background traffic: ${error.message}`);
+                }
+            }
+
+            // Check background traffic status on page load
+            async function checkBackgroundTrafficStatus() {
+                try {
+                    const response = await fetch('/api/background-traffic/status');
+                    const data = await response.json();
+                    
+                    const btn = document.getElementById('background-traffic-btn');
+                    const statusDiv = document.getElementById('background-traffic-status');
+                    const statusText = document.getElementById('bg-status-text');
+                    
+                    if (data.background_traffic) {
+                        btn.textContent = 'Stop Background Traffic';
+                        btn.style.backgroundColor = '#f44336';
+                        statusDiv.style.display = 'block';
+                        statusText.textContent = 'Enabled';
+                        statusText.style.color = '#4caf50';
+                    } else {
+                        btn.textContent = 'Start Background Traffic';
+                        btn.style.backgroundColor = '#4caf50';
+                        statusDiv.style.display = 'block';
+                        statusText.textContent = 'Disabled';
+                        statusText.style.color = '#f44336';
+                    }
+                } catch (error) {
+                    console.error('Error checking background traffic status:', error);
+                }
+            }
+
+            // Initialize status on page load
+            window.addEventListener('load', () => {
+                checkBackgroundTrafficStatus();
+            });
 
             // Initial status
             updateActivityLog('Application started and ready');
@@ -1633,15 +1710,55 @@ def generate_background_traffic():
             logger.error(f"Background traffic generation error: {str(e)}")
             time.sleep(10)
 
+@app.route('/api/background-traffic/toggle', methods=['POST', 'GET'])
+def toggle_background_traffic():
+    """Toggle background traffic generation on/off."""
+    global background_traffic, traffic_thread
+    
+    data = flask_request.get_json() or {}
+    enable = data.get('enable', None)
+    
+    # If enable is not specified, toggle current state
+    if enable is None:
+        enable = not background_traffic
+    
+    if enable and not background_traffic:
+        # Start background traffic
+        background_traffic = True
+        if traffic_thread is None or not traffic_thread.is_alive():
+            traffic_thread = threading.Thread(target=generate_background_traffic, daemon=True)
+            traffic_thread.start()
+        logger.info("Background traffic generation started")
+        return jsonify({'status': 'success', 'background_traffic': True, 'message': 'Background traffic started'})
+    elif not enable and background_traffic:
+        # Stop background traffic
+        background_traffic = False
+        logger.info("Background traffic generation stopped")
+        return jsonify({'status': 'success', 'background_traffic': False, 'message': 'Background traffic stopped'})
+    else:
+        return jsonify({'status': 'success', 'background_traffic': background_traffic, 'message': 'No change'})
+
+@app.route('/api/background-traffic/status', methods=['GET'])
+def background_traffic_status():
+    """Get background traffic generation status."""
+    return jsonify({
+        'background_traffic': background_traffic,
+        'thread_alive': traffic_thread.is_alive() if traffic_thread else False
+    })
+
 if __name__ == '__main__':
     logger.info("Starting Real Network Traffic Generator")
     logger.info(f"Server will run on http://0.0.0.0:9000")
     
-    # Start background traffic generation
-    background_traffic = True
-    traffic_thread = threading.Thread(target=generate_background_traffic, daemon=True)
-    traffic_thread.start()
-    logger.info("Background traffic generation started")
+    # Start background traffic generation - DISABLED by default
+    # Set to True if you want automatic background traffic
+    background_traffic = False
+    if background_traffic:
+        traffic_thread = threading.Thread(target=generate_background_traffic, daemon=True)
+        traffic_thread.start()
+        logger.info("Background traffic generation started")
+    else:
+        logger.info("Background traffic generation disabled - use /api/background-traffic/toggle to enable")
     
     # Run Flask app
     app.run(host='0.0.0.0', port=9000, debug=False, threaded=True)

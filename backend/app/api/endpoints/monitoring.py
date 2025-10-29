@@ -9,6 +9,7 @@ import asyncio
 import logging
 from datetime import datetime
 import random
+import time
 
 from app.core.logging import get_logger
 
@@ -113,6 +114,9 @@ async def simulate_network_monitoring(websocket: WebSocket):
     smoothed_packet_loss = 0.0
     smoothed_latency = 0.0
     alpha = 0.3  # Smoothing factor (0-1), lower = more smoothing
+    
+    # Track recently sent alerts to prevent duplicates
+    recent_alert_keys = {}  # {alert_key: timestamp} to track alerts sent in last 60 seconds
     
     while True:
         try:
@@ -263,43 +267,8 @@ async def simulate_network_monitoring(websocket: WebSocket):
                 }
             }
             
-            # Only send attack detection if there are actual errors (potential threats)
-            if error_rate > 0.15 and total_entries > 0:  # Only if significant error rate
-                # Get actual source IPs from log buffer (if available)
-                try:
-                    buffer = log_aggregator.log_buffer
-                    if buffer:
-                        # Find IP with highest error rate
-                        ip_errors = {}
-                        for entry in buffer[-50:]:  # Check last 50 entries
-                            if entry.source_ip:
-                                if entry.source_ip not in ip_errors:
-                                    ip_errors[entry.source_ip] = {'total': 0, 'errors': 0}
-                                ip_errors[entry.source_ip]['total'] += 1
-                                if entry.status_code and entry.status_code >= 400:
-                                    ip_errors[entry.source_ip]['errors'] += 1
-                        
-                        # Find IP with highest error rate
-                        if ip_errors:
-                            max_error_ip = max(ip_errors.items(), 
-                                             key=lambda x: x[1]['errors'] / max(x[1]['total'], 1))
-                            suspicious_ip, ip_data = max_error_ip
-                            if ip_data['errors'] / max(ip_data['total'], 1) > 0.2:
-                                attack_data = {
-                                    'timestamp': datetime.now().isoformat(),
-                                    'type': 'attack_detected',
-                                    'data': {
-                                        'attack_type': 'DoS',  # Most common for high error rates
-                                        'source_ip': suspicious_ip,
-                                        'target_port': 80,  # Common port
-                                        'severity': 'Medium' if error_rate < 0.3 else 'High',
-                                        'confidence': min(0.99, 0.7 + error_rate),
-                                        'details': f"High error rate detected from {suspicious_ip} ({ip_data['errors']}/{ip_data['total']} requests failed)"
-                                    }
-                                }
-                                await websocket.send_text(json.dumps(attack_data))
-                except Exception as e:
-                    logger.debug(f"Error analyzing IP patterns: {str(e)}")
+            # Attack detection is now handled in log_analysis.py when new entries are processed
+            # This ensures alerts are only generated for truly new attacks, not repeated checks
             
             # Send regular traffic update with REAL data
             await websocket.send_text(json.dumps(traffic_data))

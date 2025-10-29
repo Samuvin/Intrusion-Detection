@@ -225,30 +225,72 @@ const RealTimeMonitoring = ({ onShowNotification }) => {
         try {
           const data = JSON.parse(event.data);
           
-          // Handle incoming WebSocket data
+          // Handle incoming WebSocket data - sync with real log statistics
           if (data.type === 'traffic_update') {
-            setLiveData(prev => ({
-              ...prev,
-              totalConnections: data.data?.total_connections || prev.totalConnections,
-              suspiciousActivities: data.data?.suspicious_activities || prev.suspiciousActivities,
-              blockedAttacks: data.data?.blocked_attacks || prev.blockedAttacks,
-              currentThreatLevel: data.data?.current_threat_level || prev.currentThreatLevel,
-              networkMetrics: data.data?.network_metrics || prev.networkMetrics,
-              attackBreakdown: data.data?.attack_breakdown || prev.attackBreakdown
-            }));
+            // Immediately fetch fresh log statistics to ensure sync
+            fetch('http://localhost:8000/api/v1/log-analysis/logs/statistics')
+              .then(response => response.json())
+              .then(logStats => {
+                const stats = logStats.statistics || {};
+                const totalEntries = stats.total_entries || 0;
+                const errorRate = stats.error_rate || 0;
+                
+                // Update with both WebSocket data AND real statistics for full sync
+                setLiveData(prev => ({
+                  ...prev,
+                  // Use WebSocket data but validate with real statistics
+                  totalConnections: totalEntries || data.data?.total_connections || prev.totalConnections,
+                  suspiciousActivities: errorRate > 0 ? Math.floor(totalEntries * errorRate) : (data.data?.suspicious_activities || prev.suspiciousActivities),
+                  blockedAttacks: data.data?.blocked_attacks || prev.blockedAttacks,
+                  currentThreatLevel: data.data?.current_threat_level || prev.currentThreatLevel,
+                  networkMetrics: data.data?.network_metrics || prev.networkMetrics,
+                  // Attack breakdown from WebSocket is synced with log aggregator
+                  attackBreakdown: data.data?.attack_breakdown || prev.attackBreakdown
+                }));
+              })
+              .catch(error => {
+                console.error('Failed to sync log statistics:', error);
+                // Fallback to WebSocket data only
+                setLiveData(prev => ({
+                  ...prev,
+                  totalConnections: data.data?.total_connections || prev.totalConnections,
+                  suspiciousActivities: data.data?.suspicious_activities || prev.suspiciousActivities,
+                  blockedAttacks: data.data?.blocked_attacks || prev.blockedAttacks,
+                  currentThreatLevel: data.data?.current_threat_level || prev.currentThreatLevel,
+                  networkMetrics: data.data?.network_metrics || prev.networkMetrics,
+                  attackBreakdown: data.data?.attack_breakdown || prev.attackBreakdown
+                }));
+              });
           } else if (data.type === 'attack_detected') {
-            // Add new alert
+            // Add new alert with deduplication
+            const alertKey = `${data.data?.source_ip || 'unknown'}_${data.data?.attack_type || 'Unknown'}`;
+            const alertTimestamp = new Date(data.timestamp || Date.now());
             const newAlert = {
               id: Date.now(),
+              key: alertKey,  // Unique key for deduplication
               type: data.data?.attack_type || 'Unknown',
               message: `${data.data?.attack_type || 'Unknown'} attack detected from ${data.data?.source_ip || 'unknown'}`,
               severity: (data.data?.severity || 'medium').toLowerCase(),
-              timestamp: new Date(data.timestamp || Date.now()),
+              timestamp: alertTimestamp,
               confidence: data.data?.confidence || 0.5
             };
             
-            setRecentAlerts(prev => [newAlert, ...prev.slice(0, 9)]); // Keep last 10 alerts
-            onShowNotification(`Security Alert: ${newAlert.message}`, 'warning');
+            setRecentAlerts(prev => {
+              // Check if we already have an alert for this IP + attack type in the last 60 seconds
+              const existingAlert = prev.find(alert => 
+                alert.key === alertKey && 
+                (Date.now() - alert.timestamp.getTime()) < 60000  // Within last 60 seconds
+              );
+              
+              // If no duplicate found, add the new alert
+              if (!existingAlert) {
+                onShowNotification(`Security Alert: ${newAlert.message}`, 'warning');
+                return [newAlert, ...prev.slice(0, 9)]; // Keep last 10 alerts
+              }
+              
+              // Duplicate detected - don't add it again
+              return prev;
+            });
           } else if (data.type === 'pong') {
             // Handle pong response to ping
             console.log('Received pong from server');

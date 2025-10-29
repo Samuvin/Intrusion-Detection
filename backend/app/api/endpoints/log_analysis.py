@@ -100,6 +100,59 @@ async def submit_logs(request: LogSubmissionRequest) -> Dict[str, Any]:
         if request.real_time:
             await log_aggregator.add_log_entries(processed_entries)
             
+            # Check for new attacks in the processed entries and send alerts immediately
+            threat_alerts = []
+            for entry in processed_entries:
+                if entry:
+                    # Check if entry has explicit attack type
+                    if hasattr(entry, 'parsed_fields') and entry.parsed_fields:
+                        attack_type = entry.parsed_fields.get('attack_type')
+                        if attack_type and attack_type in ['DoS', 'Probe', 'U2R', 'R2L']:
+                            threat_alerts.append({
+                                'attack_type': attack_type,
+                                'source_ip': entry.source_ip or 'unknown',
+                                'destination_ip': entry.destination_ip or 'unknown',
+                                'timestamp': entry.timestamp.isoformat() if entry.timestamp else datetime.now().isoformat(),
+                                'severity': entry.parsed_fields.get('attack_severity', 'Medium'),
+                                'confidence': entry.parsed_fields.get('attack_confidence', 0.7),
+                                'details': entry.message or f"{attack_type} attack detected"
+                            })
+                    # Also check for suspicious patterns (high error rates, suspicious ports, etc.)
+                    elif entry.status_code and entry.status_code >= 400:
+                        # Only alert on significant errors (5xx server errors or 429 rate limits)
+                        if entry.status_code >= 500 or (entry.status_code == 429):
+                            threat_alerts.append({
+                                'attack_type': 'DoS',
+                                'source_ip': entry.source_ip or 'unknown',
+                                'destination_ip': entry.destination_ip or 'unknown',
+                                'timestamp': entry.timestamp.isoformat() if entry.timestamp else datetime.now().isoformat(),
+                                'severity': 'High' if entry.status_code >= 500 else 'Medium',
+                                'confidence': 0.6,
+                                'details': f"High error response {entry.status_code} from {entry.source_ip}"
+                            })
+            
+            # Broadcast threat alerts via WebSocket for real-time monitoring (only for NEW attacks)
+            if threat_alerts:
+                try:
+                    manager = get_websocket_manager()
+                    for alert in threat_alerts:
+                        attack_data = {
+                            'timestamp': alert['timestamp'],
+                            'type': 'attack_detected',
+                            'data': {
+                                'attack_type': alert['attack_type'],
+                                'source_ip': alert['source_ip'],
+                                'target_port': 80,
+                                'severity': alert['severity'],
+                                'confidence': alert['confidence'],
+                                'details': alert['details']
+                            }
+                        }
+                        await manager.broadcast(json.dumps(attack_data))
+                        logger.debug(f"Broadcasted attack alert: {alert['attack_type']} from {alert['source_ip']}")
+                except Exception as e:
+                    logger.debug(f"Failed to broadcast attack alert (non-critical): {str(e)}")
+            
             # Broadcast to all connected WebSocket clients in real-time
             try:
                 manager = get_websocket_manager()
@@ -214,7 +267,7 @@ async def submit_logs(request: LogSubmissionRequest) -> Dict[str, Any]:
                     'entries_count': len(processed_entries),
                     'anomalies': [],  # Will be populated by SGM analysis
                     'networkFlow': network_flow_data,
-                    'threatAlerts': []
+                    'threatAlerts': threat_alerts  # Real threat alerts from processed entries
                 }
                 
                 # Get statistics
