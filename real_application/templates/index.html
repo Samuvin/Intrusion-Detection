@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Traffic Generator | Production Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        .stat-card .icon {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .label {
+            font-size: 0.9rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+        
+        @media (max-width: 1200px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .panel h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .api-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .api-section {
+            margin-bottom: 30px;
+        }
+        
+        .api-section h3 {
+            font-size: 1.2rem;
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        }
+        
+        .log-viewer {
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 20px;
+            height: 600px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        
+        .log-entry {
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border-left: 3px solid;
+            padding-left: 15px;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .log-entry.success {
+            background: rgba(76, 175, 80, 0.1);
+            border-left-color: #4caf50;
+            color: #81c784;
+        }
+        
+        .log-entry.error {
+            background: rgba(244, 67, 54, 0.1);
+            border-left-color: #f44336;
+            color: #e57373;
+        }
+        
+        .log-entry.info {
+            background: rgba(33, 150, 243, 0.1);
+            border-left-color: #2196f3;
+            color: #64b5f6;
+        }
+        
+        .log-entry.warning {
+            background: rgba(255, 152, 0, 0.1);
+            border-left-color: #ff9800;
+            color: #ffb74d;
+        }
+        
+        .log-timestamp {
+            color: #888;
+            margin-right: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .badge-success {
+            background: #4caf50;
+            color: white;
+        }
+        
+        .badge-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .badge-info {
+            background: #2196f3;
+            color: white;
+        }
+        
+        .result-viewer {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            display: none;
+        }
+        
+        .result-viewer.show {
+            display: block;
+        }
+        
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #667eea, transparent);
+            margin: 30px 0;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.online {
+            background: #4caf50;
+        }
+        
+        .status-indicator.offline {
+            background: #f44336;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Network Traffic Generator</h1>
+            <p>Production-ready dashboard for generating and monitoring network traffic across multiple APIs and cloud services</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="icon">📊</div>
+                <div class="label">Total API Calls</div>
+                <div class="value" id="apiCount">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="icon">⚡</div>
+                <div class="label">Success Rate</div>
+                <div class="value" id="successRate">100%</div>
+            </div>
+            <div class="stat-card">
+                <div class="icon">🌐</div>
+                <div class="label">Local IP</div>
+                <div class="value" style="font-size: 1.3rem;">{{ local_ip }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="icon">🔄</div>
+                <div class="label">Status</div>
+                <div class="value" style="font-size: 1.3rem;">
+                    <span class="status-indicator online"></span> Running
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="panel">
+                <h2>📡 API Endpoints</h2>
+                
+                <div class="controls">
+                    <button id="autoBtn" onclick="toggleAutoMode()">▶️ Start Auto Mode</button>
+                    <button onclick="clearLogs()">🗑️ Clear Logs</button>
+                    <button id="background-traffic-btn" onclick="toggleBackgroundTraffic()">🔄 Start Background Traffic</button>
+                </div>
+                
+                <div class="api-section">
+                    <h3>📝 JSONPlaceholder</h3>
+                    <div class="api-grid">
+                        <button onclick="callAPI('jsonplaceholder', 'posts')">Get Posts</button>
+                        <button onclick="callAPI('jsonplaceholder', 'users')">Get Users</button>
+                        <button onclick="callAPI('jsonplaceholder', 'comments')">Get Comments</button>
+                        <button onclick="callAPI('jsonplaceholder', 'albums')">Get Albums</button>
+                    </div>
+                </div>
+                
+                <div class="api-section">
+                    <h3>📖 Poetry & Quotes</h3>
+                    <div class="api-grid">
+                        <button onclick="callAPI('poem', 'random')">Random Poem</button>
+                        <button onclick="callEndpoint('/api/quote/random', 'GET')">Random Quote</button>
+                        <button onclick="callEndpoint('/api/cat/fact', 'GET')">Cat Fact</button>
+                        <button onclick="callEndpoint('/api/dog/random', 'GET')">Random Dog</button>
+                    </div>
+                </div>
+                
+                <div class="api-section">
+                    <h3>🧪 HTTP Methods</h3>
+                    <div class="api-grid">
+                        <button onclick="callEndpoint('/api/httpbin/get', 'GET')">GET</button>
+                        <button onclick="callEndpoint('/api/httpbin/post', 'POST')">POST</button>
+                        <button onclick="callEndpoint('/api/httpbin/put', 'PUT')">PUT</button>
+                        <button onclick="callEndpoint('/api/httpbin/delete', 'DELETE')">DELETE</button>
+                        <button onclick="callEndpoint('/api/httpbin/patch', 'PATCH')">PATCH</button>
+                    </div>
+                </div>
+                
+                <div class="api-section">
+                    <h3>☁️ Cloud Services</h3>
+                    <div class="api-grid">
+                        <button onclick="callEndpoint('/api/aws/cloudfront', 'GET')">AWS CloudFront</button>
+                        <button onclick="callEndpoint('/api/aws/status', 'GET')">AWS Status</button>
+                        <button onclick="callEndpoint('/api/azure/status', 'GET')">Azure Status</button>
+                        <button onclick="callEndpoint('/api/gcp/status', 'GET')">GCP Status</button>
+                        <button onclick="callEndpoint('/api/cloudflare/cdn', 'GET')">Cloudflare CDN</button>
+                        <button onclick="callEndpoint('/api/cloudflare/ips', 'GET')">Cloudflare IPs</button>
+                        <button onclick="callEndpoint('/api/github/api', 'GET')">GitHub API</button>
+                        <button onclick="callEndpoint('/api/gitlab/api', 'GET')">GitLab API</button>
+                    </div>
+                </div>
+                
+                <div class="section-divider"></div>
+                
+                <div class="api-section">
+                    <h3>⚡ Batch Operations</h3>
+                    <div class="api-grid">
+                        <button onclick="runBatch(5)">Batch (5 calls)</button>
+                        <button onclick="runBatch(10)">Batch (10 calls)</button>
+                        <button class="btn-warning" onclick="runStressTest()">Stress Test (20 calls)</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h2>📋 Live Activity Logs</h2>
+                <div id="background-traffic-status" style="margin-bottom: 15px; padding: 12px; background: #f5f5f5; border-radius: 8px; display: none;">
+                    <strong>Background Traffic:</strong> <span id="bg-status-text" class="badge badge-info">Disabled</span>
+                </div>
+                <div class="log-viewer" id="logViewer">
+                    <div class="log-entry info">
+                        <span class="log-timestamp" id="initTime"></span>
+                        <span>🚀 Application started and ready</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let apiCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+        let autoMode = false;
+        let autoInterval = null;
+        
+        // Initialize timestamp
+        document.getElementById('initTime').textContent = new Date().toLocaleTimeString();
+        
+        function updateStats() {
+            document.getElementById('apiCount').textContent = apiCount;
+            const total = successCount + errorCount;
+            if (total > 0) {
+                const rate = ((successCount / total) * 100).toFixed(1);
+                document.getElementById('successRate').textContent = rate + '%';
+            }
+        }
+        
+        function addLog(message, type = 'info') {
+            const viewer = document.getElementById('logViewer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="log-timestamp">${new Date().toLocaleTimeString()}</span>${message}`;
+            viewer.insertBefore(entry, viewer.firstChild);
+            
+            // Keep only last 100 entries
+            while (viewer.children.length > 100) {
+                viewer.removeChild(viewer.lastChild);
+            }
+            
+            // Auto-scroll to top
+            viewer.scrollTop = 0;
+        }
+        
+        async function callAPI(category, endpoint) {
+            addLog(`📡 Calling ${category}/${endpoint}...`, 'info');
+            apiCount++;
+            
+            try {
+                const response = await fetch(`/api/${category}/${endpoint}`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    successCount++;
+                    addLog(`✅ ${category}/${endpoint} - Success (${response.status})`, 'success');
+                } else {
+                    errorCount++;
+                    addLog(`❌ ${category}/${endpoint} - Error: ${data.message || 'Unknown'}`, 'error');
+                }
+            } catch (error) {
+                errorCount++;
+                addLog(`❌ ${category}/${endpoint} - Error: ${error.message}`, 'error');
+            }
+            
+            updateStats();
+        }
+        
+        async function callEndpoint(url, method = 'GET') {
+            const endpoint = url.split('/').pop();
+            addLog(`📡 Calling ${method} ${url}...`, 'info');
+            apiCount++;
+            
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'success') {
+                    successCount++;
+                    addLog(`✅ ${method} ${endpoint} - Success (${response.status})`, 'success');
+                } else {
+                    errorCount++;
+                    addLog(`❌ ${method} ${endpoint} - Error`, 'error');
+                }
+            } catch (error) {
+                errorCount++;
+                addLog(`❌ ${method} ${endpoint} - Error: ${error.message}`, 'error');
+            }
+            
+            updateStats();
+        }
+        
+        async function runBatch(count = 5) {
+            addLog(`⚡ Starting batch operation (${count} calls)...`, 'warning');
+            try {
+                const response = await fetch('/api/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        count: count,
+                        endpoints: ['httpbin/get', 'quote/random', 'cat/fact', 'httpbin/post']
+                    })
+                });
+                const data = await response.json();
+                apiCount += count;
+                successCount += count;
+                addLog(`✅ Batch completed: ${count} calls`, 'success');
+            } catch (error) {
+                errorCount += count;
+                addLog(`❌ Batch failed: ${error.message}`, 'error');
+            }
+            updateStats();
+        }
+        
+        async function runStressTest() {
+            addLog(`🔥 Starting stress test (20 concurrent requests)...`, 'warning');
+            try {
+                const response = await fetch('/api/stress-test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requests: 20, delay_ms: 50 })
+                });
+                const data = await response.json();
+                apiCount += 20;
+                addLog(`✅ Stress test started: 20 requests`, 'success');
+            } catch (error) {
+                addLog(`❌ Stress test failed: ${error.message}`, 'error');
+            }
+            updateStats();
+        }
+        
+        function toggleAutoMode() {
+            autoMode = !autoMode;
+            const btn = document.getElementById('autoBtn');
+            
+            if (autoMode) {
+                btn.textContent = '⏸️ Stop Auto Mode';
+                btn.classList.add('btn-danger');
+                addLog('▶️ Auto mode started', 'info');
+                
+                autoInterval = setInterval(() => {
+                    const actions = [
+                        () => callAPI('jsonplaceholder', 'posts'),
+                        () => callAPI('jsonplaceholder', 'users'),
+                        () => callAPI('poem', 'random'),
+                        () => callEndpoint('/api/quote/random', 'GET'),
+                        () => callEndpoint('/api/cat/fact', 'GET'),
+                        () => callEndpoint('/api/httpbin/get', 'GET'),
+                        () => callEndpoint('/api/aws/cloudfront', 'GET'),
+                        () => callEndpoint('/api/cloudflare/cdn', 'GET'),
+                        () => callEndpoint('/api/github/api', 'GET'),
+                    ];
+                    const action = actions[Math.floor(Math.random() * actions.length)];
+                    action();
+                }, 3000);
+            } else {
+                btn.textContent = '▶️ Start Auto Mode';
+                btn.classList.remove('btn-danger');
+                clearInterval(autoInterval);
+                addLog('⏸️ Auto mode stopped', 'info');
+            }
+        }
+        
+        function clearLogs() {
+            const viewer = document.getElementById('logViewer');
+            viewer.innerHTML = `<div class="log-entry info"><span class="log-timestamp">${new Date().toLocaleTimeString()}</span>🗑️ Logs cleared</div>`;
+            addLog('🗑️ Logs cleared', 'warning');
+        }
+        
+        async function toggleBackgroundTraffic() {
+            const btn = document.getElementById('background-traffic-btn');
+            const statusDiv = document.getElementById('background-traffic-status');
+            const statusText = document.getElementById('bg-status-text');
+            
+            try {
+                const response = await fetch('/api/background-traffic/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                
+                const data = await response.json();
+                
+                if (data.background_traffic) {
+                    btn.textContent = '⏹️ Stop Background Traffic';
+                    btn.classList.add('btn-danger');
+                    statusDiv.style.display = 'block';
+                    statusText.textContent = 'Enabled';
+                    statusText.className = 'badge badge-success';
+                    addLog('🔄 Background traffic started', 'info');
+                } else {
+                    btn.textContent = '🔄 Start Background Traffic';
+                    btn.classList.remove('btn-danger');
+                    statusDiv.style.display = 'block';
+                    statusText.textContent = 'Disabled';
+                    statusText.className = 'badge badge-info';
+                    addLog('⏹️ Background traffic stopped', 'info');
+                }
+            } catch (error) {
+                addLog(`❌ Error toggling background traffic: ${error.message}`, 'error');
+            }
+        }
+        
+        async function checkBackgroundTrafficStatus() {
+            try {
+                const response = await fetch('/api/background-traffic/status');
+                const data = await response.json();
+                
+                const btn = document.getElementById('background-traffic-btn');
+                const statusDiv = document.getElementById('background-traffic-status');
+                const statusText = document.getElementById('bg-status-text');
+                
+                if (data.background_traffic) {
+                    btn.textContent = '⏹️ Stop Background Traffic';
+                    btn.classList.add('btn-danger');
+                    statusDiv.style.display = 'block';
+                    statusText.textContent = 'Enabled';
+                    statusText.className = 'badge badge-success';
+                } else {
+                    btn.textContent = '🔄 Start Background Traffic';
+                    statusDiv.style.display = 'block';
+                    statusText.textContent = 'Disabled';
+                    statusText.className = 'badge badge-info';
+                }
+            } catch (error) {
+                console.error('Error checking background traffic status:', error);
+            }
+        }
+        
+        window.addEventListener('load', () => {
+            checkBackgroundTrafficStatus();
+            updateStats();
+        });
+    </script>
+</body>
+</html>
+

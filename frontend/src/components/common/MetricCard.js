@@ -24,18 +24,43 @@ const MetricCard = ({ title, value, icon, color = 'primary', subtitle, trend }) 
     return colors[colorName] || colors.primary;
   };
 
+  const getGradient = (colorName) => {
+    const gradients = {
+      primary: 'linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%)',
+      secondary: 'linear-gradient(135deg, rgba(220, 0, 78, 0.15) 0%, rgba(156, 39, 176, 0.15) 100%)',
+      success: 'linear-gradient(135deg, rgba(46, 125, 50, 0.15) 0%, rgba(76, 175, 80, 0.15) 100%)',
+      error: 'linear-gradient(135deg, rgba(211, 47, 47, 0.15) 0%, rgba(244, 67, 54, 0.15) 100%)',
+      warning: 'linear-gradient(135deg, rgba(237, 108, 2, 0.15) 0%, rgba(255, 152, 0, 0.15) 100%)',
+      info: 'linear-gradient(135deg, rgba(2, 136, 209, 0.15) 0%, rgba(33, 150, 243, 0.15) 100%)',
+    };
+    return gradients[colorName] || gradients.primary;
+  };
+
   return (
     <Card 
       className="metric-card"
       sx={{ 
         height: '100%',
-        background: `linear-gradient(135deg, rgba(25, 118, 210, 0.1) 0%, rgba(156, 39, 176, 0.1) 100%)`,
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: 2,
-        transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+        background: getGradient(color),
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: 3,
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          background: `linear-gradient(90deg, ${getColorValue(color)}, ${getColorValue(color)}80)`,
+        },
         '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+          transform: 'translateY(-6px) scale(1.02)',
+          boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)',
+          border: `1px solid ${getColorValue(color)}40`,
         },
       }}
     >

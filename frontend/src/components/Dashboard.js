@@ -345,19 +345,41 @@ const Dashboard = ({ onShowNotification }) => {
       {/* Header Section with Gradient */}
       <Box sx={{ 
         mb: 4, 
-        p: 3, 
-        borderRadius: 2, 
+        p: 4, 
+        borderRadius: 3, 
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         color: 'white',
-        boxShadow: 3,
-        position: 'relative'
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%)',
+          pointerEvents: 'none',
+        },
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          top: '-50%',
+          right: '-10%',
+          width: '300px',
+          height: '300px',
+          background: 'radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%)',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+        }
       }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h4" gutterBottom sx={{ fontWeight: 'bold', mb: 1 }}>
+            <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, mb: 1, fontSize: { xs: '1.75rem', md: '2rem' }, letterSpacing: '-0.5px' }}>
               Network Intrusion Detection System
             </Typography>
-            <Typography variant="body1" sx={{ opacity: 0.9 }}>
+            <Typography variant="body1" sx={{ opacity: 0.95, fontSize: '1.1rem', fontWeight: 400 }}>
               Real-time security monitoring and threat analysis dashboard
             </Typography>
           </Box>
@@ -436,7 +458,17 @@ const Dashboard = ({ onShowNotification }) => {
       {/* Status Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6}>
-          <Card>
+          <Card sx={{ 
+            borderRadius: 3, 
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+            background: 'rgba(255, 255, 255, 0.02)',
+            transition: 'all 0.3s',
+            '&:hover': {
+              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)',
+              transform: 'translateY(-2px)',
+            }
+          }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <SecurityIcon sx={{ mr: 1, color: 'primary.main' }} />
@@ -458,7 +490,17 @@ const Dashboard = ({ onShowNotification }) => {
         </Grid>
         
         <Grid item xs={12} sm={6}>
-          <Card>
+          <Card sx={{ 
+            borderRadius: 3, 
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+            background: 'rgba(255, 255, 255, 0.02)',
+            transition: 'all 0.3s',
+            '&:hover': {
+              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.15)',
+              transform: 'translateY(-2px)',
+            }
+          }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <CheckCircleIcon sx={{ mr: 1, color: 'success.main' }} />

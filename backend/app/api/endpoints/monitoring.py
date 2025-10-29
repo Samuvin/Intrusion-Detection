@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 import json
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import random
 import time
 
@@ -366,7 +366,6 @@ async def simulate_attack(attack_type: str = "DoS") -> Dict[str, Any]:
     try:
         from app.api.endpoints.log_analysis import log_aggregator
         from app.data.log_ingestion import LogEntry
-        from datetime import timezone
         
         valid_attacks = ['DoS', 'Probe', 'U2R', 'R2L']
         if attack_type not in valid_attacks:
@@ -428,32 +427,36 @@ async def simulate_attack(attack_type: str = "DoS") -> Dict[str, Any]:
         
         # Create multiple log entries to simulate the attack
         log_entries = []
+        base_timestamp = datetime.now(timezone.utc)
         for i in range(num_requests):
-            entry = LogEntry()
-            entry.timestamp = datetime.now(timezone.utc)
-            entry.source_ip = source_ip
-            entry.destination_ip = target_ip
-            entry.source_port = random.randint(40000, 65535)
-            entry.destination_port = params['port']
-            entry.protocol = 'TCP'
-            entry.method = params['method']
-            entry.uri = params['path']
-            entry.path = params['path']
-            entry.status_code = params['status_code']
-            entry.bytes_sent = params['bytes_sent']
-            entry.bytes_received = params['bytes_received']
-            entry.duration = params['duration'] / num_requests  # Distribute duration across requests
-            entry.message = f"Simulated {attack_type} attack - {params['method']} {params['path']}"
-            entry.log_source = "attack_simulator"
-            entry.user_agent = f"AttackSimulator/{attack_type}/1.0"
+            # Create timestamp with slight variation for each entry
+            entry_timestamp = base_timestamp + timedelta(milliseconds=i * 10)
             
-            # Store attack type in parsed_fields for later classification
-            entry.parsed_fields = {
-                'attack_type': attack_type,
-                'simulated': True,
-                'attack_severity': 'High',
-                'attack_confidence': 0.95
-            }
+            # Create LogEntry with required timestamp parameter
+            entry = LogEntry(
+                timestamp=entry_timestamp,
+                source_ip=source_ip,
+                destination_ip=target_ip,
+                source_port=random.randint(40000, 65535),
+                destination_port=params['port'],
+                protocol='TCP',
+                method=params['method'],
+                uri=params['path'],
+                path=params['path'],
+                status_code=params['status_code'],
+                bytes_sent=params['bytes_sent'],
+                bytes_received=params['bytes_received'],
+                duration=params['duration'] / num_requests,  # Distribute duration across requests
+                message=f"Simulated {attack_type} attack - {params['method']} {params['path']}",
+                log_source="attack_simulator",
+                user_agent=f"AttackSimulator/{attack_type}/1.0",
+                parsed_fields={
+                    'attack_type': attack_type,
+                    'simulated': True,
+                    'attack_severity': 'High',
+                    'attack_confidence': 0.95
+                }
+            )
             
             log_entries.append(entry)
         

@@ -12,7 +12,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from urllib.parse import urlparse
-from flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string, jsonify, render_template
 from flask import request as flask_request
 import random
 import psutil
@@ -31,7 +31,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates')
 
 # API endpoints - Expanded list for diverse network traffic
 APIS = {
@@ -395,7 +395,12 @@ def call_api(url, method='GET', params=None, headers=None, timeout=10):
 @app.route('/')
 def index():
     """Main application page."""
-    html = """
+    # Try to use external template file first, fallback to inline HTML
+    try:
+        return render_template('index.html', local_ip=LOCAL_IP)
+    except:
+        # Fallback to inline HTML if template file not found
+        html = """
     <!DOCTYPE html>
     <html lang="en">
     <head>
