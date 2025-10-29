@@ -26,7 +26,6 @@ import {
   Security as SecurityIcon,
   Analytics as AnalyticsIcon,
   Storage as StorageIcon,
-  Settings as SettingsIcon,
   CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 
@@ -34,8 +33,7 @@ import Dashboard from './components/Dashboard';
 import ModelManagement from './components/ModelManagement';
 import DatasetManagement from './components/DatasetManagement';
 import RealTimeMonitoring from './components/RealTimeMonitoring';
-import PerformanceAnalytics from './components/PerformanceAnalytics';
-import Settings from './components/Settings';
+import LogAnalysisDashboard from './components/LogAnalysisDashboard';
 import { ApiService } from './services/ApiService';
 
 const drawerWidth = 240;
@@ -43,10 +41,9 @@ const drawerWidth = 240;
 const menuItems = [
   { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { title: 'Real-time Monitoring', icon: <SecurityIcon />, path: '/monitoring' },
+  { title: 'Log Analysis', icon: <UploadIcon />, path: '/log-analysis' },
   { title: 'Model Management', icon: <AnalyticsIcon />, path: '/models' },
   { title: 'Dataset Management', icon: <StorageIcon />, path: '/datasets' },
-  { title: 'Performance Analytics', icon: <AnalyticsIcon />, path: '/analytics' },
-  { title: 'Settings', icon: <SettingsIcon />, path: '/settings' },
 ];
 
 function App() {
@@ -223,20 +220,16 @@ function App() {
               element={<RealTimeMonitoring onShowNotification={showNotification} />} 
             />
             <Route 
+              path="/log-analysis" 
+              element={<LogAnalysisDashboard onShowNotification={showNotification} />} 
+            />
+            <Route 
               path="/models" 
               element={<ModelManagement onShowNotification={showNotification} />} 
             />
             <Route 
               path="/datasets" 
               element={<DatasetManagement onShowNotification={showNotification} />} 
-            />
-            <Route 
-              path="/analytics" 
-              element={<PerformanceAnalytics onShowNotification={showNotification} />} 
-            />
-            <Route 
-              path="/settings" 
-              element={<Settings onShowNotification={showNotification} />} 
             />
           </Routes>
         </Container>

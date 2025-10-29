@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from app.api.routes import api_router
 from app.core.config import settings
@@ -26,7 +27,28 @@ async def lifespan(app: FastAPI):
     # Initialize ML models on startup
     try:
         from app.ml.model_manager import ModelManager
-        app.state.model_manager = ModelManager()
+        model_manager = ModelManager()
+        app.state.model_manager = model_manager
+        
+        # Try to auto-load pre-trained model
+        # Resolve model path relative to backend directory
+        if not os.path.isabs(settings.MODEL_PATH):
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            model_dir = os.path.join(backend_dir, settings.MODEL_PATH.lstrip('./'))
+        else:
+            model_dir = settings.MODEL_PATH
+        
+        default_model_path = os.path.join(model_dir, 'nids_model.pkl')
+        if os.path.exists(default_model_path):
+            try:
+                result = await model_manager.load_model(default_model_path)
+                if result:
+                    logger.info(f"Pre-trained model auto-loaded successfully from {default_model_path}")
+                else:
+                    logger.info("Pre-trained model file exists but failed to load")
+            except Exception as e:
+                logger.warning(f"Failed to auto-load pre-trained model: {str(e)}")
+        
         logger.info("ML Model Manager initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize ML models: {e}")

@@ -1,297 +1,187 @@
 #!/bin/bash
 
-# NIDS System Startup Script
-# This script starts both the backend (FastAPI) and frontend (React) services
+# Complete NIDS System Startup Script
+# Starts: Backend API (8000), Frontend Dashboard (3000), Real Application (9000)
 
-set -e  # Exit on any error
+set -e
 
-# Colors for output
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[NIDS]${NC} $1"
-}
+print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Function to check if a port is in use
-check_port() {
-    local port=$1
-    if lsof -i :$port > /dev/null 2>&1; then
-        return 0  # Port is in use
-    else
-        return 1  # Port is free
-    fi
-}
-
-# Function to kill processes on specific ports
-kill_port_processes() {
-    local port=$1
-    local pids=$(lsof -ti :$port)
-    if [ ! -z "$pids" ]; then
-        print_warning "Killing existing processes on port $port"
-        kill $pids 2>/dev/null || true
-        sleep 2
-    fi
-}
-
-# Function to cleanup on exit
-cleanup() {
-    print_status "Shutting down NIDS system..."
-    
-    # Kill backend processes
-    if [ ! -z "$BACKEND_PID" ]; then
-        print_status "Stopping backend server (PID: $BACKEND_PID)"
-        kill $BACKEND_PID 2>/dev/null || true
-    fi
-    
-    # Kill frontend processes
-    if [ ! -z "$FRONTEND_PID" ]; then
-        print_status "Stopping frontend server (PID: $FRONTEND_PID)"
-        kill $FRONTEND_PID 2>/dev/null || true
-    fi
-    
-    # Kill any remaining processes on our ports
-    kill_port_processes 8000
-    kill_port_processes 3000
-    
-    print_success "NIDS system stopped gracefully"
-    exit 0
-}
-
-# Set up signal handlers
-trap cleanup SIGINT SIGTERM
-
-# Main script starts here
-echo -e "${PURPLE}"
-echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
-echo "║                    🚀 NIDS System Startup Script 🚀                          ║"
-echo "║                   Network Intrusion Detection System                          ║"
-echo "║                                                                               ║"
-echo "║  Backend:  FastAPI + ML (Hybrid SVM + XGBoost + CSA)                        ║"
-echo "║  Frontend: React + Material-UI Dashboard                                      ║"
-echo "║                                                                               ║"
-echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
-# Check if we're in the right directory
-if [ ! -f "README.md" ] || [ ! -d "backend" ] || [ ! -d "frontend" ]; then
+# Check if running from project root
+if [ ! -d "backend" ] || [ ! -d "frontend" ] || [ ! -d "real_application" ]; then
     print_error "Please run this script from the project root directory"
     exit 1
 fi
 
-# Check for required tools
-print_status "Checking system requirements..."
+print_info "========================================="
+print_info "Complete NIDS System Startup"
+print_info "========================================="
+echo ""
 
-# Check Python
-if ! command -v python3 &> /dev/null; then
-    print_error "Python 3 is required but not installed"
-    exit 1
-fi
+# Cleanup function
+cleanup() {
+    print_info "Stopping all services..."
+    if [ -f backend.pid ]; then kill -9 $(cat backend.pid) 2>/dev/null || true; rm -f backend.pid; fi
+    if [ -f frontend.pid ]; then kill -9 $(cat frontend.pid) 2>/dev/null || true; rm -f frontend.pid; fi
+    if [ -f app.pid ]; then kill -9 $(cat app.pid) 2>/dev/null || true; rm -f app.pid; fi
+    lsof -ti:3000 -ti:8000 -ti:9000 | xargs kill -9 2>/dev/null || true
+    print_success "All services stopped"
+}
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-    print_error "Node.js is required but not installed"
-    exit 1
-fi
+trap cleanup EXIT INT TERM
 
-# Check npm
-if ! command -v npm &> /dev/null; then
-    print_error "npm is required but not installed"
-    exit 1
-fi
-
-print_success "All required tools are available"
-
-# Check and handle port conflicts
-print_status "Checking for port conflicts..."
-
-if check_port 8000; then
-    print_warning "Port 8000 is already in use"
-    read -p "Do you want to kill existing processes on port 8000? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        kill_port_processes 8000
-    else
-        print_error "Cannot start backend on port 8000. Exiting."
-        exit 1
+# Kill existing processes on our ports
+print_info "Checking for existing processes..."
+for port in 3000 8000 9000; do
+    if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
+        print_warning "Port $port is in use. Stopping existing process..."
+        lsof -ti:$port | xargs kill -9 2>/dev/null || true
+        sleep 2
     fi
-fi
+done
 
-if check_port 3000; then
-    print_warning "Port 3000 is already in use"
-    read -p "Do you want to kill existing processes on port 3000? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        kill_port_processes 3000
-    else
-        print_error "Cannot start frontend on port 3000. Exiting."
-        exit 1
-    fi
-fi
-
-# Setup Backend
-print_status "Setting up backend environment..."
-
+# Step 1: Install Backend Dependencies
+print_info "Step 1: Installing backend dependencies..."
 cd backend
+python3 -m pip install --upgrade pip --quiet >/dev/null 2>&1
+python3 -m pip install -q fastapi 'uvicorn[standard]' pydantic pydantic-settings python-multipart scikit-learn xgboost numpy pandas scipy websockets aiofiles aiosqlite watchdog 2>/dev/null || {
+    print_warning "Some dependencies may have issues, continuing..."
+}
+cd ..
+print_success "Backend dependencies ready"
 
-# Check if virtual environment exists
+# Step 2: Install Frontend Dependencies
+print_info "Step 2: Installing frontend dependencies..."
+cd frontend
+if [ ! -d "node_modules" ]; then
+    npm install --silent >/dev/null 2>&1
+fi
+if ! npm list recharts >/dev/null 2>&1; then
+    npm install recharts --silent >/dev/null 2>&1
+fi
+cd ..
+print_success "Frontend dependencies ready"
+
+# Step 3: Install Real Application Dependencies
+print_info "Step 3: Installing real application dependencies..."
+cd real_application
 if [ ! -d "venv" ]; then
-    print_status "Creating Python virtual environment..."
     python3 -m venv venv
 fi
-
-# Activate virtual environment
-print_status "Activating virtual environment..."
 source venv/bin/activate
+pip install -q flask requests psutil >/dev/null 2>&1
+deactivate
+cd ..
+print_success "Real application dependencies ready"
 
-# Install dependencies
-if [ ! -f "venv/.dependencies_installed" ] || [ "requirements.txt" -nt "venv/.dependencies_installed" ]; then
-    print_status "Installing Python dependencies..."
-    pip install -q -r requirements.txt
-    touch venv/.dependencies_installed
+# Step 4: Start Real Application (Port 9000)
+print_info "Step 4: Starting Real Application (port 9000)..."
+cd real_application
+source venv/bin/activate
+python3 app.py > ../app.log 2>&1 &
+APP_PID=$!
+echo $APP_PID > ../app.pid
+deactivate
+cd ..
+sleep 3
+if ps -p $APP_PID > /dev/null 2>&1; then
+    print_success "Real Application started (PID: $APP_PID) - http://localhost:9000"
 else
-    print_status "Python dependencies are up to date"
+    print_error "Real Application failed to start. Check app.log"
+    exit 1
 fi
 
-# Create models directory if it doesn't exist
-mkdir -p models
-
-# Start backend server
-print_status "Starting backend server on http://localhost:8000..."
-python run.py > nids_backend.log 2>&1 &
+# Step 5: Start Backend API (Port 8000)
+print_info "Step 5: Starting Backend API (port 8000)..."
+cd backend
+python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
 BACKEND_PID=$!
-print_success "Backend server started (PID: $BACKEND_PID)"
+echo $BACKEND_PID > ../backend.pid
+cd ..
+sleep 4
 
-# Wait for backend to be ready
-print_status "Waiting for backend to be ready..."
-sleep 3
+# Verify backend is responding
+max_attempts=15
+attempt=0
+while [ $attempt -lt $max_attempts ]; do
+    if curl -s http://localhost:8000/health >/dev/null 2>&1; then
+        print_success "Backend API started (PID: $BACKEND_PID) - http://localhost:8000"
+        break
+    fi
+    attempt=$((attempt + 1))
+    echo -n "."
+    sleep 1
+done
+echo ""
+
+if [ $attempt -eq $max_attempts ]; then
+    print_error "Backend failed to start. Check backend.log"
+    tail -20 backend.log
+    exit 1
+fi
+
+# Step 6: Start Frontend Dashboard (Port 3000)
+print_info "Step 6: Starting Frontend Dashboard (port 3000)..."
+cd frontend
+BROWSER=none npm start > ../frontend.log 2>&1 &
+FRONTEND_PID=$!
+echo $FRONTEND_PID > ../frontend.pid
+cd ..
+sleep 10
+
+# Verify frontend is responding
 max_attempts=30
 attempt=0
-
 while [ $attempt -lt $max_attempts ]; do
-    if curl -s http://localhost:8000/health > /dev/null 2>&1; then
+    if curl -s http://localhost:3000 >/dev/null 2>&1; then
+        print_success "Frontend Dashboard started (PID: $FRONTEND_PID) - http://localhost:3000"
         break
     fi
     attempt=$((attempt + 1))
     echo -n "."
-    sleep 1
+    sleep 2
 done
+echo ""
 
 if [ $attempt -eq $max_attempts ]; then
-    print_error "Backend failed to start within 30 seconds"
-    cleanup
-    exit 1
-else
-    echo
-    print_success "Backend is ready!"
+    print_warning "Frontend may still be starting. Check frontend.log"
 fi
 
-# Setup Frontend
-print_status "Setting up frontend environment..."
-
-cd ../frontend
-
-# Install dependencies
-if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules/.package-lock.json" ]; then
-    print_status "Installing Node.js dependencies..."
-    npm install > /dev/null 2>&1
-    touch node_modules/.package-lock.json
-else
-    print_status "Node.js dependencies are up to date"
-fi
-
-# Start frontend server
-print_status "Starting frontend server on http://localhost:3000..."
-npm start > nids_frontend.log 2>&1 &
-FRONTEND_PID=$!
-print_success "Frontend server started (PID: $FRONTEND_PID)"
-
-# Wait for frontend to be ready
-print_status "Waiting for frontend to be ready..."
-sleep 5
-max_attempts=60
-attempt=0
-
-while [ $attempt -lt $max_attempts ]; do
-    if curl -s http://localhost:3000 > /dev/null 2>&1; then
-        break
-    fi
-    attempt=$((attempt + 1))
-    echo -n "."
-    sleep 1
-done
-
-if [ $attempt -eq $max_attempts ]; then
-    print_error "Frontend failed to start within 60 seconds"
-    cleanup
-    exit 1
-else
-    echo
-    print_success "Frontend is ready!"
-fi
-
-# Return to project root
-cd ..
-
-# Display success message
-echo
-echo -e "${GREEN}"
-echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
-echo "║                        🎉 NIDS SYSTEM IS RUNNING! 🎉                         ║"
-echo "║                                                                               ║"
-echo "║  🌐 Frontend Dashboard: http://localhost:3000                                ║"
-echo "║  🔗 Backend API:        http://localhost:8000                                ║"
-echo "║  📚 API Documentation:  http://localhost:8000/docs                           ║"
-echo "║                                                                               ║"
-echo "║  📊 Features Available:                                                       ║"
-echo "║    • Real-time Network Monitoring                                            ║"
-echo "║    • ML Model Training & Management                                          ║"
-echo "║    • Dataset Upload & Processing                                             ║"
-echo "║    • Performance Analytics                                                   ║"
-echo "║    • System Configuration                                                    ║"
-echo "║                                                                               ║"
-echo "║  🛑 Press Ctrl+C to stop all services                                        ║"
-echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
-# Show logs in real-time (optional)
-print_status "System is running. Monitoring logs..."
-print_status "Backend PID: $BACKEND_PID, Frontend PID: $FRONTEND_PID"
-
-# Keep the script running and show logs
-tail -f backend/nids_backend.log frontend/nids_frontend.log 2>/dev/null &
-TAIL_PID=$!
+# Display Summary
+echo ""
+print_info "========================================="
+print_success "All Services Started Successfully!"
+print_info "========================================="
+echo ""
+print_info "🌐 Services Running:"
+echo "  📊 Frontend Dashboard:    http://localhost:3000"
+echo "  📊 Log Analysis:           http://localhost:3000/log-analysis"
+echo "  ⚙️  Backend API:            http://localhost:8000"
+echo "  📚 API Documentation:      http://localhost:8000/docs"
+echo "  🚀 Real Application:      http://localhost:9000"
+echo ""
+print_info "📝 Process IDs:"
+echo "  - Real App PID:    $APP_PID (stored in app.pid)"
+echo "  - Backend PID:     $BACKEND_PID (stored in backend.pid)"
+echo "  - Frontend PID:    $FRONTEND_PID (stored in frontend.pid)"
+echo ""
+print_info "📋 Log Files:"
+echo "  - Real App logs:   ./app.log"
+echo "  - Backend logs:    ./backend.log"
+echo "  - Frontend logs:   ./frontend.log"
+echo ""
+print_warning "Press CTRL+C to stop all services"
+echo ""
 
 # Wait for user interrupt
-while true; do
-    if ! kill -0 $BACKEND_PID 2>/dev/null; then
-        print_error "Backend process died unexpectedly"
-        break
-    fi
-    if ! kill -0 $FRONTEND_PID 2>/dev/null; then
-        print_error "Frontend process died unexpectedly"
-        break
-    fi
-    sleep 5
-done
-
-# Cleanup on exit
-cleanup
+wait

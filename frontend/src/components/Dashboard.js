@@ -47,6 +47,13 @@ const Dashboard = ({ onShowNotification }) => {
 
   const [recentActivity, setRecentActivity] = useState([]);
   const [systemHealth, setSystemHealth] = useState('healthy');
+  const [attackBreakdown, setAttackBreakdown] = useState({
+    Normal: 0,
+    DoS: 0,
+    Probe: 0,
+    U2R: 0,
+    R2L: 0
+  });
 
   useEffect(() => {
     loadDashboardData();
@@ -54,7 +61,27 @@ const Dashboard = ({ onShowNotification }) => {
     // Set up periodic data refresh
     const interval = setInterval(loadDashboardData, 10000); // Every 10 seconds
     
-    return () => clearInterval(interval);
+    // Connect to WebSocket for real-time attack breakdown updates
+    let ws = null;
+    try {
+      ws = new WebSocket(`ws://localhost:8000/api/v1/monitoring/live`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'traffic_update' && data.data?.attack_breakdown) {
+          setAttackBreakdown(data.data.attack_breakdown);
+        }
+      };
+      ws.onerror = (error) => {
+        console.error('Dashboard WebSocket error:', error);
+      };
+    } catch (error) {
+      console.error('Failed to connect WebSocket:', error);
+    }
+    
+    return () => {
+      clearInterval(interval);
+      if (ws) ws.close();
+    };
   }, []);
 
   const loadDashboardData = async () => {
@@ -84,43 +111,94 @@ const Dashboard = ({ onShowNotification }) => {
         });
       }
 
+      // Fetch log statistics FIRST (most accurate and real-time source)
+      let logStatsData = {};
+      try {
+        const logStatsResponse = await fetch('http://localhost:8000/api/v1/log-analysis/logs/statistics');
+        if (logStatsResponse.ok) {
+          const logStats = await logStatsResponse.json();
+          logStatsData = logStats.statistics || {};
+        }
+      } catch (error) {
+        console.error('Failed to fetch log statistics:', error);
+      }
+
       // Process monitoring status
+      let monitoringStats = {};
+      let uptimeStr = '0h 0m';
       if (monitoringStatus.status === 'fulfilled' && monitoringStatus.value?.status === 'success') {
         const status = monitoringStatus.value.monitoring_status;
-        setMetrics({
-          totalConnections: status.statistics?.total_connections_today || 0,
-          threatsBlocked: status.statistics?.attacks_blocked_today || 0,
-          systemAccuracy: ((status.statistics?.system_accuracy || 0) * 100).toFixed(1),
-          uptime: status.uptime || '0h 0m',
-          currentThreatLevel: determineThreatLevel(status.statistics?.attacks_blocked_today || 0),
-          activeModels: 1, // Since we have one hybrid model
-        });
-
-        // Generate sample recent activity
-        setRecentActivity([
-          {
-            id: 1,
-            type: 'attack_blocked',
-            message: 'DoS attack detected and blocked from 192.168.1.100',
-            timestamp: new Date(),
-            severity: 'high',
-          },
-          {
-            id: 2,
-            type: 'model_update',
-            message: 'Hybrid classifier updated with new parameters',
-            timestamp: new Date(Date.now() - 300000), // 5 minutes ago
-            severity: 'info',
-          },
-          {
-            id: 3,
-            type: 'training_complete',
-            message: 'Model training completed with 96.8% accuracy',
-            timestamp: new Date(Date.now() - 900000), // 15 minutes ago
-            severity: 'success',
-          },
-        ]);
+        monitoringStats = status.statistics || {};
+        uptimeStr = status.uptime || '0h 0m';
       }
+
+      // Combine data sources - prefer log statistics for real-time data
+      const totalConnections = logStatsData?.total_entries ?? monitoringStats?.total_connections_today ?? 0;
+      const threatsBlocked = monitoringStats?.attacks_blocked_today ?? 0;
+      const systemAccuracy = monitoringStats?.system_accuracy ? ((monitoringStats.system_accuracy) * 100).toFixed(1) : '0.0';
+      
+      setMetrics({
+        totalConnections: totalConnections,
+        threatsBlocked: threatsBlocked,
+        systemAccuracy: systemAccuracy,
+        uptime: uptimeStr,
+        currentThreatLevel: determineThreatLevel(threatsBlocked),
+        activeModels: 1, // Since we have one hybrid model
+      });
+
+      // Build real recent activity from log statistics
+      const activities = [];
+      const stats = logStatsData;
+      
+      if (stats.total_entries > 0) {
+        activities.push({
+          id: 1,
+          type: 'system_update',
+          message: `Processing ${stats.total_entries} log entries from ${stats.unique_sources} sources`,
+          timestamp: new Date(),
+          severity: 'info',
+        });
+      }
+      
+      if (stats.error_rate > 0) {
+        activities.push({
+          id: 2,
+          type: 'warning',
+          message: `Error rate: ${(stats.error_rate * 100).toFixed(2)}% - ${stats.entries_per_second.toFixed(2)} entries/sec`,
+          timestamp: new Date(Date.now() - 60000),
+          severity: stats.error_rate > 0.1 ? 'warning' : 'info',
+        });
+      } else if (stats.total_entries > 0) {
+        activities.push({
+          id: 2,
+          type: 'info',
+          message: `${stats.entries_per_second.toFixed(2)} entries/sec - ${stats.unique_sources} unique sources`,
+          timestamp: new Date(Date.now() - 30000),
+          severity: 'info',
+        });
+      }
+      
+      if (modelInfo.status === 'fulfilled' && modelInfo.value?.model_info?.is_trained) {
+        activities.push({
+          id: 3,
+          type: 'model_status',
+          message: 'Model is trained and active',
+          timestamp: new Date(Date.now() - 120000),
+          severity: 'success',
+        });
+      }
+      
+      if (stats.total_entries === 0) {
+        activities.push({
+          id: 0,
+          type: 'info',
+          message: 'Waiting for log data from Real Application. Make API calls to generate traffic.',
+          timestamp: new Date(),
+          severity: 'info',
+        });
+      }
+      
+      setRecentActivity(activities);
 
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -276,7 +354,11 @@ const Dashboard = ({ onShowNotification }) => {
               <Typography variant="h6" gutterBottom>
                 Attack Type Distribution
               </Typography>
-              <AttackTypeChart />
+              <AttackTypeChart data={Object.entries(attackBreakdown).map(([name, value]) => ({
+                name,
+                value,
+                color: name === 'Normal' ? '#4caf50' : name === 'DoS' ? '#f44336' : name === 'Probe' ? '#ff9800' : name === 'U2R' ? '#2196f3' : '#9c27b0'
+              }))} />
             </CardContent>
           </Card>
         </Grid>

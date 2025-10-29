@@ -1,0 +1,22 @@
+.log-analysis-dashboard {
+  padding: 20px;
+}
+
+.statistics-grid {
+  margin-bottom: 24px;
+}
+
+.chart-container {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.table-container {
+  margin-top: 16px;
+}
+
+.alert-container {
+  padding: 16px;
+  margin-top: 16px;
+}
+

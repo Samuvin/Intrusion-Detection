@@ -13,7 +13,6 @@ import {
   Pie,
   Cell,
   ResponsiveContainer,
-  Legend,
   Tooltip,
 } from 'recharts';
 
@@ -65,36 +64,6 @@ const AttackTypeChart = ({ data: propData }) => {
     return null;
   };
 
-  const CustomLegend = ({ payload }) => {
-    return (
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', mt: 2 }}>
-        {payload.map((entry, index) => (
-          <Box
-            key={index}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              mr: 2,
-              mb: 1,
-            }}
-          >
-            <Box
-              sx={{
-                width: 12,
-                height: 12,
-                backgroundColor: entry.color,
-                borderRadius: 0.5,
-                mr: 1,
-              }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              {entry.value}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-    );
-  };
 
   if (!chartData.length) {
     return (
@@ -106,21 +75,34 @@ const AttackTypeChart = ({ data: propData }) => {
     );
   }
 
+  // Filter out zero values to avoid clutter, but keep at least one entry for visual consistency
+  const displayData = chartData.filter(item => item.value > 0);
+  
+  if (displayData.length === 0 && chartData.length > 0) {
+    // If all values are 0, show only the first one with value 0
+    displayData.push(chartData[0]);
+  }
+  
+  // Calculate total for percentage display
+  const total = chartData.reduce((sum, item) => sum + item.value, 0);
+
   return (
-    <Box sx={{ width: '100%', height: 300 }}>
+    <Box sx={{ width: '100%', height: 350 }}>
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
-            data={chartData}
+            data={displayData}
             cx="50%"
-            cy="50%"
+            cy="45%"
             labelLine={false}
-            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
-            outerRadius={80}
+            label={false}
+            outerRadius={100}
+            innerRadius={30}
             fill="#8884d8"
             dataKey="value"
+            paddingAngle={2}
           >
-            {chartData.map((entry, index) => (
+            {displayData.map((entry, index) => (
               <Cell 
                 key={`cell-${index}`} 
                 fill={entry.color} 
@@ -130,9 +112,65 @@ const AttackTypeChart = ({ data: propData }) => {
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />
-          <Legend content={<CustomLegend />} />
         </PieChart>
       </ResponsiveContainer>
+      {/* Custom Legend Below Chart */}
+      <Box sx={{ 
+        display: 'flex', 
+        flexWrap: 'wrap', 
+        justifyContent: 'center', 
+        gap: 2,
+        mt: 2,
+        px: 2
+      }}>
+        {chartData.map((entry, index) => {
+          const percentage = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
+          return (
+            <Box
+              key={index}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                minWidth: '120px',
+                mb: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 16,
+                  height: 16,
+                  backgroundColor: entry.color,
+                  borderRadius: 1,
+                  mr: 1.5,
+                  flexShrink: 0,
+                }}
+              />
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    fontWeight: 500,
+                    color: 'text.primary',
+                    lineHeight: 1.2
+                  }}
+                >
+                  {entry.name}
+                </Typography>
+                <Typography 
+                  variant="caption" 
+                  sx={{ 
+                    color: 'text.secondary',
+                    fontSize: '0.75rem',
+                    lineHeight: 1.2
+                  }}
+                >
+                  {entry.value} ({percentage}%)
+                </Typography>
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
     </Box>
   );
 };

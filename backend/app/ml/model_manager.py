@@ -40,7 +40,36 @@ class ModelManager:
         # Create model directory
         os.makedirs(settings.MODEL_PATH, exist_ok=True)
         
+        # Try to load pre-trained model if it exists
+        default_model_path = os.path.join(settings.MODEL_PATH, 'nids_model.pkl')
+        if os.path.exists(default_model_path):
+            try:
+                # Use synchronous loading since this is in __init__
+                import asyncio
+                # Check if there's already an event loop running
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If loop is running, schedule for later
+                        loop.create_task(self._auto_load_model(default_model_path))
+                    else:
+                        # If no loop running, we can run it
+                        loop.run_until_complete(self._auto_load_model(default_model_path))
+                except RuntimeError:
+                    # No event loop, create one
+                    asyncio.run(self._auto_load_model(default_model_path))
+            except Exception as e:
+                logger.warning(f"Failed to auto-load model: {str(e)}")
+        
         logger.info("Model Manager initialized")
+    
+    async def _auto_load_model(self, model_path: str):
+        """Auto-load model on startup."""
+        result = await self.load_model(model_path)
+        if result:
+            logger.info(f"Pre-trained model auto-loaded from {model_path}")
+        else:
+            logger.info("No pre-trained model found, model status: Not Trained")
     
     async def train_model(
         self,

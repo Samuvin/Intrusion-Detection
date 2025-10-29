@@ -4,7 +4,7 @@ API routes for the NIDS application.
 
 from fastapi import APIRouter
 
-from app.api.endpoints import models, datasets, monitoring
+from app.api.endpoints import models, datasets, monitoring, log_analysis
 
 api_router = APIRouter()
 
@@ -12,3 +12,4 @@ api_router = APIRouter()
 api_router.include_router(models.router, prefix="/models", tags=["models"])
 api_router.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
 api_router.include_router(monitoring.router, prefix="/monitoring", tags=["monitoring"])
+api_router.include_router(log_analysis.router, prefix="/log-analysis", tags=["log-analysis"])
